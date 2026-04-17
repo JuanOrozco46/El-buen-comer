@@ -3,6 +3,8 @@ import prisma from "../../../../lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../../../lib/auth";
 import { startOfDay, endOfDay, subDays, startOfWeek, startOfMonth } from "date-fns";
+export const dynamic = 'force-dynamic';
+
 
 export async function GET(req: Request) {
   try {
