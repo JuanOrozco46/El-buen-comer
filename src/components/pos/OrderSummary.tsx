@@ -11,6 +11,7 @@ interface OrderSummaryProps {
   onUpdateNotes: (productId: number, sizeId: number, notes: string) => void;
   onClearCart: () => void;
   onPlaceOrder: (paymentType: string) => void;
+  isEditing?: boolean;
 }
 
 export const OrderSummary = ({ 
@@ -21,7 +22,8 @@ export const OrderSummary = ({
   onRemoveItem, 
   onUpdateNotes, 
   onClearCart, 
-  onPlaceOrder 
+  onPlaceOrder,
+  isEditing
 }: OrderSummaryProps) => {
   const [editingNotes, setEditingNotes] = useState<string | null>(null); // e.g., "prodId-sizeId"
   const subtotal = items.reduce((sum, item) => sum + (item.size.price * item.quantity), 0);
@@ -159,7 +161,9 @@ export const OrderSummary = ({
         >
           <div className="flex items-center gap-3">
             <ChefHat size={24} />
-            <span className="text-lg">{isPanicActive ? "Saturado" : "Enviar a Cocina"}</span>
+            <span className="text-lg">
+              {isPanicActive ? "Saturado" : (isEditing ? "Actualizar Pedido" : "Enviar a Cocina")}
+            </span>
           </div>
           <span className="text-[10px] opacity-70 font-bold tracking-[0.2em]">Mesa {selectedTable?.number || "?"}</span>
         </button>

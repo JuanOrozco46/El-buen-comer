@@ -32,30 +32,40 @@ export function TableMap({ onSelect, selectedTableId }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 p-4 md:p-8">
-      {tables.map(table => (
-        <button
-          key={table.id}
-          onClick={() => onSelect(table)}
-          className={`
-            aspect-square rounded-[32px] p-6 flex flex-col items-center justify-center gap-3 transition-all duration-300 border-2
-            ${selectedTableId === table.id 
-              ? "bg-orange-600 border-orange-600 text-white shadow-xl shadow-orange-600/30 scale-105" 
-              : table.status === "OCCUPIED"
-                ? "bg-zinc-100 border-zinc-200 text-zinc-400 opacity-60 cursor-not-allowed"
-                : "bg-white border-zinc-100 text-zinc-900 hover:border-orange-200 hover:shadow-lg"
-            }
-          `}
-        >
-          <div className={`p-3 rounded-2xl ${selectedTableId === table.id ? "bg-white/20" : "bg-zinc-50"}`}>
-            <Users size={24} />
-          </div>
-          <span className="text-xl font-black">{table.number}</span>
-          <span className="text-[10px] font-black uppercase tracking-widest opacity-60">
-            {table.status === "OCCUPIED" ? "Ocupada" : "Disponible"}
-          </span>
-        </button>
-      ))}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 p-4 md:p-6">
+      {tables.map(table => {
+        const hasOrder = table.orders && table.orders.length > 0;
+        const activeOrderId = hasOrder ? table.orders![0].id : null;
+        
+        return (
+          <button
+            key={table.id}
+            onClick={() => onSelect(table)}
+            className={`
+              aspect-square rounded-[32px] p-4 flex flex-col items-center justify-center gap-2 transition-all duration-300 border-2
+              ${selectedTableId === table.id 
+                ? "bg-orange-600 border-orange-600 text-white shadow-xl shadow-orange-600/30 scale-105" 
+                : hasOrder
+                  ? "bg-orange-50 border-orange-200 text-orange-900 shadow-md shadow-orange-900/5 hover:border-orange-400"
+                  : "bg-white border-zinc-100 text-zinc-900 hover:border-orange-200 hover:shadow-lg"
+              }
+            `}
+          >
+            <div className={`p-3 rounded-2xl ${selectedTableId === table.id ? "bg-white/20" : hasOrder ? "bg-orange-200/50" : "bg-zinc-50"}`}>
+              <Users size={24} className={hasOrder && selectedTableId !== table.id ? "text-orange-700" : ""} />
+            </div>
+            <span className="text-xl font-black">{table.number}</span>
+            {hasOrder ? (
+              <div className="flex flex-col items-center">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">Ocupada</span>
+                 <span className="text-[10px] font-bold opacity-60">Orden #{activeOrderId}</span>
+              </div>
+            ) : (
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Disponible</span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

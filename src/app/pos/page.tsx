@@ -23,6 +23,7 @@ export default function POSPage() {
   const [viewMode, setViewMode] = useState<'NEW' | 'PENDING'>('NEW');
   const [viewStep, setViewStep] = useState<'TABLE' | 'PRODUCTS'>('TABLE');
   const [isPanicActive, setIsPanicActive] = useState(false);
+  const [editOrderId, setEditOrderId] = useState<number | null>(null);
 
   // Split payment modal state
   const [splitModal, setSplitModal] = useState<{ orderId: number; total: number } | null>(null);
@@ -105,6 +106,7 @@ export default function POSPage() {
   const clearCart = () => {
     setCart([]);
     setSelectedTable(null);
+    setEditOrderId(null);
     setViewStep('TABLE');
   };
 
@@ -137,8 +139,8 @@ export default function POSPage() {
         }))
       };
 
-      const res = await fetch('/api/orders', {
-        method: 'POST',
+      const res = await fetch(editOrderId ? `/api/orders/${editOrderId}` : '/api/orders', {
+        method: editOrderId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
       });
@@ -153,6 +155,48 @@ export default function POSPage() {
       }
     } catch (error) {
       console.error("Connection error:", error);
+    }
+  };
+
+  const deleteOrder = async (orderId: number) => {
+    if (!confirm("¿Estás seguro de que deseas ELIMINAR esta comanda? Esta acción no se puede deshacer.")) return;
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await refreshOrders();
+      } else {
+        alert("No se pudo eliminar la orden.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const startEditingOrder = async (orderId: number, table: Table) => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/orders/${orderId}`);
+      if (!res.ok) throw new Error();
+      const orderData = await res.json();
+      
+      // Load items into cart
+      const cartItems: CartItem[] = orderData.items.map((i: any) => ({
+        product: i.product,
+        size: i.product.sizes.find((s: any) => s.name === i.sizeName) || { id: 0, name: i.sizeName, price: i.price },
+        quantity: i.quantity,
+        notes: i.notes || ""
+      }));
+      
+      setCart(cartItems);
+      setEditOrderId(orderId);
+      setSelectedTable(table);
+      setViewStep('PRODUCTS');
+    } catch (err) {
+      alert("Error al cargar la orden para edición.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -315,8 +359,13 @@ export default function POSPage() {
               <TableMap 
                 selectedTableId={selectedTable?.id}
                 onSelect={(table) => {
-                  setSelectedTable(table);
-                  setViewStep('PRODUCTS');
+                  const hasOrder = table.orders && table.orders.length > 0;
+                  if (hasOrder) {
+                    startEditingOrder(table.orders![0].id, table);
+                  } else {
+                    setSelectedTable(table);
+                    setViewStep('PRODUCTS');
+                  }
                 }}
               />
             </section>
@@ -400,6 +449,13 @@ export default function POSPage() {
                         <span className="px-2 py-1 bg-amber-100 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
                           {order.source || 'POS'}
                         </span>
+                        <button
+                          onClick={() => deleteOrder(order.id)}
+                          title="Eliminar Orden"
+                          className="p-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-xl transition-all"
+                        >
+                          <X size={16} />
+                        </button>
                       </div>
                     </div>
 
@@ -467,6 +523,7 @@ export default function POSPage() {
                 onUpdateNotes={updateCartItemNotes}
                 onClearCart={clearCart}
                 onPlaceOrder={placeOrder}
+                isEditing={!!editOrderId}
               />
             </div>
           </aside>

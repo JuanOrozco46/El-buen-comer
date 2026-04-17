@@ -9,6 +9,19 @@ export async function GET() {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const tables = await prisma.table.findMany({
+      include: {
+        orders: {
+          where: {
+            status: {
+              notIn: ["PAID", "CANCELLED"]
+            }
+          },
+          select: {
+             id: true,
+             status: true
+          }
+        }
+      },
       orderBy: { number: "asc" }
     });
 

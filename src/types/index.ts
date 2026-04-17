@@ -68,4 +68,5 @@ export interface FullOrder {
   id: number;
   number: string;
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
+  orders?: { id: number; status: string }[];
 }
