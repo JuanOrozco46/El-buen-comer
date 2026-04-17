@@ -1,0 +1,520 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { Product, ProductSize, CartItem, OrderSource, FullOrder } from "../../types";
+import { ProductCard } from "../../components/pos/ProductCard";
+import { OrderSummary } from "../../components/pos/OrderSummary";
+import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat } from "lucide-react";
+
+export default function POSPage() {
+  const { data: session, status } = useSession();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<FullOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("Todos");
+  const [showMobileSummary, setShowMobileSummary] = useState(false);
+
+  // Tab control: 'NEW' for placing orders, 'PENDING' for cashing out
+  const [viewMode, setViewMode] = useState<'NEW' | 'PENDING'>('NEW');
+  const [isPanicActive, setIsPanicActive] = useState(false);
+
+  // Split payment modal state
+  const [splitModal, setSplitModal] = useState<{ orderId: number; total: number } | null>(null);
+  const [splitCash, setSplitCash] = useState("");
+  const [splitTransfer, setSplitTransfer] = useState("");
+
+  // Effect 1: Panic Mode Polling
+  useEffect(() => {
+    const checkPanic = async () => {
+      try {
+        const res = await fetch('/api/admin/panic');
+        const json = await res.json();
+        setIsPanicActive(json.isPanicModeActive);
+      } catch (err) { console.error(err); }
+    };
+    checkPanic();
+    const interval = setInterval(checkPanic, 10000); // Poll every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Effect 2: Initial Data Fetch
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const [prodRes, ordRes] = await Promise.all([
+          fetch('/api/products'),
+          fetch('/api/orders?status=active')
+        ]);
+        const pData = await prodRes.json();
+        const oData = await ordRes.json();
+        setProducts(pData);
+        if (Array.isArray(oData)) {
+          setPendingOrders(oData.filter(o => o.status !== "PAID"));
+        }
+      } catch (error) {
+        console.error("Error fetching POS data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (status === "authenticated") fetchInitialData();
+  }, [status]);
+
+  const categories = ["Todos", ...Array.from(new Set(products.map(p => p.category)))];
+
+  const addToCart = (product: Product, size: ProductSize) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.product.id === product.id && item.size.id === size.id);
+      if (existing) {
+        return prev.map(item =>
+          (item.product.id === product.id && item.size.id === size.id)
+            ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      }
+      return [...prev, { product, size, quantity: 1 }];
+    });
+  };
+
+  const removeFromCart = (productId: number, sizeId: number) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.product.id === productId && item.size.id === sizeId);
+      if (existing && existing.quantity > 1) {
+        return prev.map(item =>
+          (item.product.id === productId && item.size.id === sizeId)
+            ? { ...item, quantity: item.quantity - 1 } : item
+        );
+      }
+      return prev.filter(item => !(item.product.id === productId && item.size.id === sizeId));
+    });
+  };
+
+  const clearCart = () => setCart([]);
+
+  const refreshOrders = async () => {
+    const ordRes = await fetch('/api/orders?status=active');
+    const oData = await ordRes.json();
+    if (Array.isArray(oData)) {
+      setPendingOrders(oData);
+    }
+  };
+
+  const placeOrder = async (actionMethod: string) => {
+    try {
+      const subtotal = cart.reduce((s, i) => s + (i.size.price * i.quantity), 0);
+
+      const orderData = {
+        source: OrderSource.POS,
+        total: subtotal,
+        status: actionMethod === 'PENDING' ? 'PENDING' : 'COMPLETED',
+        payments: actionMethod === 'PENDING' ? [] : [{ method: actionMethod, amount: subtotal }],
+        items: cart.map(item => ({
+          productId: item.product.id,
+          sizeName: item.size.name,
+          quantity: item.quantity,
+          price: item.size.price
+        }))
+      };
+
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
+      });
+
+      if (res.ok) {
+        clearCart();
+        setShowMobileSummary(false);
+        await refreshOrders();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Error: ${err.error || 'No se pudo realizar el pedido.'}`);
+      }
+    } catch (error) {
+      console.error("Connection error:", error);
+    }
+  };
+
+  const markAsPaid = async (orderId: number, method: string) => {
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "PAID", paymentMethod: method })
+      });
+      if (res.ok) {
+        setPendingOrders(prev => prev.filter(o => o.id !== orderId));
+        // Prompt to print receipt
+        if (confirm("Pago exitoso. ¿Deseas imprimir el recibo?")) {
+          window.open(`/pos/print/receipt/${orderId}`, '_blank');
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Error al procesar pago: ${err.error || 'Intenta de nuevo.'}`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const openSplitModal = (orderId: number, total: number) => {
+    setSplitCash("");
+    setSplitTransfer(total.toString());
+    setSplitModal({ orderId, total });
+  };
+
+  const handleSplitPayment = async () => {
+    if (!splitModal) return;
+    const cash = parseFloat(splitCash) || 0;
+    const transfer = parseFloat(splitTransfer) || 0;
+    if (cash + transfer < splitModal.total) {
+      alert(`El total dividido ($${(cash + transfer).toLocaleString()}) es menor al total de la orden ($${splitModal.total.toLocaleString()}).`);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/orders/${splitModal.orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "PAID",
+          paymentMethod: "MIXED",
+          splitPayments: [
+            ...(cash > 0 ? [{ method: "CASH", amount: cash }] : []),
+            ...(transfer > 0 ? [{ method: "TRANSFER", amount: transfer }] : []),
+          ]
+        })
+      });
+      if (res.ok) {
+        setPendingOrders(prev => prev.filter(o => o.id !== splitModal.orderId));
+        setSplitModal(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Error: ${err.error || 'No se pudo procesar el pago dividido.'}`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = activeCategory === "Todos" || p.category === activeCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const role = session?.user?.role as string;
+  const isCashierOrAdmin = role === 'ADMIN' || role === 'CASHIER';
+
+  if (status === "loading") {
+    return <div className="flex h-screen items-center justify-center bg-zinc-50"><Loader2 className="animate-spin text-orange-500" size={48} /></div>;
+  }
+
+  return (
+    <div className="flex h-screen bg-zinc-50 overflow-hidden font-sans relative">
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <header className="h-24 lg:h-32 flex flex-col justify-center px-4 lg:px-10 bg-white border-b border-zinc-200 shrink-0 relative z-20">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3 lg:gap-4">
+              <div className="lg:hidden">
+                <button
+                  onClick={() => setShowMobileSummary(!showMobileSummary)}
+                  className="p-3 bg-zinc-950 text-white rounded-2xl relative shadow-lg shadow-black/20"
+                >
+                  <ShoppingCart size={20} strokeWidth={2.5} />
+                  {cart.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-6 h-6 bg-orange-600 text-white text-[10px] flex items-center justify-center rounded-full font-black border-2 border-white">
+                      {cart.reduce((s, i) => s + i.quantity, 0)}
+                    </span>
+                  )}
+                </button>
+              </div>
+              <div>
+                <h1 className="text-lg lg:text-3xl font-black text-zinc-950 tracking-tight leading-none">Terminal POS</h1>
+                <p className="hidden sm:block text-zinc-400 font-bold mt-1 uppercase tracking-widest text-[8px] lg:text-[10px]">Operador: {role || 'Personal'}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {isCashierOrAdmin && (
+                <div className="flex bg-zinc-100 p-1 rounded-2xl gap-1">
+                  <button
+                    onClick={() => setViewMode('NEW')}
+                    className={`px-4 lg:px-6 py-2 rounded-xl transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] ${viewMode === 'NEW' ? 'bg-white shadow-sm text-orange-600' : 'text-zinc-400'}`}
+                  >
+                    <PlusCircle size={14} /> <span className="hidden sm:inline">Nueva</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('PENDING')}
+                    className={`px-4 lg:px-6 py-2 rounded-xl transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] ${viewMode === 'PENDING' ? 'bg-white shadow-sm text-emerald-600' : 'text-zinc-400'}`}
+                  >
+                    <ListOrdered size={14} /> <span className="hidden sm:inline">Cuentas</span>
+                    {pendingOrders.length > 0 && (
+                      <span className="bg-zinc-950 text-white text-[9px] font-black rounded-full w-5 h-5 flex items-center justify-center">
+                        {pendingOrders.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {viewMode === 'NEW' && (
+            <div className="relative w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+              <input
+                type="text"
+                placeholder="Buscar arroz, bebidas, adiciones..."
+                className="w-full h-10 lg:h-12 pl-12 pr-4 bg-zinc-50 border border-zinc-100 rounded-xl lg:rounded-2xl text-xs lg:text-base font-bold focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500/50 transition-all text-zinc-800 placeholder:text-zinc-300"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          )}
+        </header>
+
+        {/* Dynamic Content Area */}
+        {viewMode === 'NEW' ? (
+          <section className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-6 lg:space-y-8 bg-zinc-50/50">
+            <div className="flex gap-2 lg:gap-3 overflow-x-auto pb-2 no-scrollbar">
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-4 lg:px-6 py-2 lg:py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === cat
+                      ? "bg-zinc-900 text-white shadow-xl shadow-zinc-900/20"
+                      : "bg-white text-zinc-400 border border-zinc-200"
+                    }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {loading ? (
+              <div className="flex items-center justify-center h-64">
+                <Loader2 className="animate-spin text-orange-500" size={48} />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-4 lg:gap-6 pb-20 lg:pb-0">
+                {filteredProducts.map(product => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onAdd={addToCart}
+                  />
+                ))}
+                {filteredProducts.length === 0 && (
+                  <div className="col-span-full flex flex-col items-center justify-center h-48 text-zinc-400">
+                    <Search size={48} className="opacity-20 mb-4" />
+                    <p className="font-bold uppercase tracking-widest text-xs">Sin resultados para "{searchQuery}"</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        ) : (
+          <section className="flex-1 overflow-y-auto p-4 lg:p-8 bg-zinc-50">
+            <h2 className="text-xl lg:text-2xl font-black mb-6 text-zinc-800 tracking-tight">
+              Cuentas Abiertas
+              <span className="ml-3 text-sm font-bold text-zinc-400">({pendingOrders.length} activas)</span>
+            </h2>
+            {pendingOrders.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-zinc-400">
+                <ListOrdered size={64} className="opacity-20 mb-4" />
+                <p className="font-bold uppercase tracking-widest text-xs">No hay cuentas abiertas</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
+                {pendingOrders.map(order => (
+                  <div key={order.id} className="bg-white border border-zinc-200 rounded-3xl p-5 lg:p-6 shadow-sm flex flex-col">
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
+                        <span className="font-black text-[10px] text-zinc-400 tracking-widest uppercase">Orden #{order.id}</span>
+                        {order.customerName && (
+                          <p className="text-xs font-bold text-zinc-700 mt-0.5">{order.customerName}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => window.open(`/pos/print/kitchen/${order.id}`, '_blank')}
+                          title="Imprimir Comanda Cocina"
+                          className="p-2 bg-zinc-100 text-zinc-500 hover:bg-orange-100 hover:text-orange-600 rounded-xl transition-all"
+                        >
+                          <ChefHat size={16} />
+                        </button>
+                        <button
+                          onClick={() => window.open(`/pos/print/receipt/${order.id}`, '_blank')}
+                          title="Imprimir Pre-cuenta"
+                          className="p-2 bg-zinc-100 text-zinc-500 hover:bg-emerald-100 hover:text-emerald-600 rounded-xl transition-all"
+                        >
+                          <Printer size={16} />
+                        </button>
+                        <span className="px-2 py-1 bg-amber-100 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                          {order.source || 'POS'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <ul className="mb-6 space-y-2 flex-1">
+                      {order.items.map((i: any) => (
+                        <li key={i.id} className="text-xs font-bold text-zinc-700 leading-snug flex justify-between">
+                          <span className="line-clamp-1">{i.quantity}x {i.product.name} <span className="text-zinc-400">({i.sizeName})</span></span>
+                          <span className="shrink-0 ml-2">${Number(i.price).toLocaleString()}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="border-t border-zinc-100 pt-4 mt-auto">
+                      <p className="text-xl lg:text-2xl font-black text-orange-600 mb-4">${Number(order.total).toLocaleString()}</p>
+
+                      <div className="grid grid-cols-2 gap-2 text-white font-black text-[10px] uppercase tracking-widest">
+                        <button onClick={() => markAsPaid(order.id, 'CASH')} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
+                        <button onClick={() => markAsPaid(order.id, 'CARD')} className="bg-blue-500 hover:bg-blue-600 p-3 rounded-xl transition-all active:scale-95">Tarjeta</button>
+                        <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
+                        <button onClick={() => openSplitModal(order.id, Number(order.total))} className="bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+      </main>
+
+      {/* Right Order Panel - Responsive Drawer */}
+      {viewMode === 'NEW' && (
+        <>
+          {/* Backdrop for mobile */}
+          {showMobileSummary && (
+            <div
+              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+              onClick={() => setShowMobileSummary(false)}
+            />
+          )}
+
+          <aside className={`
+            fixed lg:static inset-y-0 right-0 z-50 lg:z-10
+            w-[90%] sm:w-[420px] lg:w-[420px] 
+            bg-zinc-900 shadow-2xl lg:shadow-none
+            transform transition-transform duration-300 ease-in-out
+            ${showMobileSummary ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+            border-l border-zinc-800 overflow-hidden flex flex-col
+          `}>
+            {/* Mobile Header for drawer */}
+            <div className="lg:hidden p-6 border-b border-zinc-800 flex justify-between items-center text-white shrink-0">
+              <h3 className="font-black uppercase tracking-widest text-sm">Resumen de Comanda</h3>
+              <button onClick={() => setShowMobileSummary(false)} className="p-2 hover:bg-zinc-800 rounded-xl transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden">
+              <OrderSummary
+                items={cart}
+                role={role}
+                isPanicActive={isPanicActive}
+                onRemoveItem={removeFromCart}
+                onClearCart={clearCart}
+                onPlaceOrder={placeOrder}
+              />
+            </div>
+          </aside>
+        </>
+      )}
+
+      {/* Floating Bottom Bar for Mobile Cart Status */}
+      {viewMode === 'NEW' && cart.length > 0 && !showMobileSummary && (
+        <div className="lg:hidden fixed bottom-6 left-6 right-6 z-40 animate-in slide-in-from-bottom-10">
+          <button
+            onClick={() => setShowMobileSummary(true)}
+            className="w-full bg-orange-600 text-white p-6 rounded-[32px] shadow-2xl shadow-orange-600/40 flex items-center justify-between font-black uppercase tracking-widest text-xs"
+          >
+            <div className="flex items-center gap-4">
+              <div className="bg-white/20 p-2 rounded-xl">
+                <ShoppingCart size={20} />
+              </div>
+              <span>{cart.reduce((s, i) => s + i.quantity, 0)} Items</span>
+            </div>
+            <span>${cart.reduce((s, i) => s + (i.size.price * i.quantity), 0).toLocaleString()} • Ver Pedido</span>
+          </button>
+        </div>
+      )}
+
+      {/* Split Payment Modal */}
+      {splitModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-2xl font-black text-zinc-900">Pago Dividido</h3>
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mt-1">
+                  Total a pagar: <span className="text-orange-600">${splitModal.total.toLocaleString()}</span>
+                </p>
+              </div>
+              <button onClick={() => setSplitModal(null)} className="p-3 bg-zinc-100 rounded-2xl text-zinc-500 hover:bg-zinc-200 transition-all">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6">
+              <div>
+                <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">
+                  <Banknote size={14} className="text-emerald-500" /> Monto en Efectivo
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={splitCash}
+                  onChange={(e) => {
+                    setSplitCash(e.target.value);
+                    const remaining = splitModal.total - (parseFloat(e.target.value) || 0);
+                    setSplitTransfer(Math.max(0, remaining).toString());
+                  }}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-6 py-4 text-2xl font-black text-emerald-600 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">
+                  <Smartphone size={14} className="text-purple-500" /> Monto por Transferencia
+                </label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={splitTransfer}
+                  onChange={(e) => {
+                    setSplitTransfer(e.target.value);
+                    const remaining = splitModal.total - (parseFloat(e.target.value) || 0);
+                    setSplitCash(Math.max(0, remaining).toString());
+                  }}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-6 py-4 text-2xl font-black text-purple-600 focus:ring-2 focus:ring-purple-500 outline-none"
+                />
+              </div>
+
+              <div className="bg-zinc-50 rounded-2xl p-4 flex justify-between text-sm font-bold text-zinc-500">
+                <span>Total Ingresado</span>
+                <span className={`font-black ${(parseFloat(splitCash) || 0) + (parseFloat(splitTransfer) || 0) >= splitModal.total ? "text-emerald-600" : "text-red-500"}`}>
+                  ${((parseFloat(splitCash) || 0) + (parseFloat(splitTransfer) || 0)).toLocaleString()}
+                </span>
+              </div>
+
+              <button
+                onClick={handleSplitPayment}
+                disabled={(parseFloat(splitCash) || 0) + (parseFloat(splitTransfer) || 0) < splitModal.total}
+                className="w-full bg-zinc-900 hover:bg-orange-600 text-white font-black py-5 rounded-3xl uppercase tracking-widest text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Confirmar Pago Dividido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,181 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  userName       String   @unique
+  name           String
+  role           Role     @default(WAITER)
+  hashedPassword String   
+  orders         Order[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model GlobalSettings {
+  id                 Int      @id @default(1)
+  isPanicModeActive  Boolean  @default(false)
+  restaurantName     String   @default("El Horno | Maxi Wok")
+  updatedAt          DateTime @updatedAt
+}
+
+enum Role {
+  ADMIN
+  CASHIER
+  WAITER
+  CHEF
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?  // Stores ingredient text like "Pollo, chorizo..."
+  category    String
+  isActive    Boolean  @default(true)
+  isSoldOut   Boolean  @default(false)
+  sizes       ProductSize[]
+  orderItems  OrderItem[]
+  recipes     Recipe[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProductSize {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  name      String   // e.g., "Personal", "Mediano", "Familiar", "Único"
+  price     Decimal  @db.Decimal(10, 2)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Ingredient {
+  id        Int            @id @default(autoincrement())
+  name      String
+  unit      String         // "g", "ml", "unit"
+  stock     Decimal        @db.Decimal(10, 3)
+  minStock  Decimal        @db.Decimal(10, 3)
+  recipes   Recipe[]
+  logs      InventoryLog[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model Recipe {
+  id           Int        @id @default(autoincrement())
+  productId    Int
+  ingredientId Int
+  // You can specify how much of an ingredient goes into each size if necessary
+  sizeName     String     @default("Personal") // Maps to ProductSize.name
+  quantity     Decimal    @db.Decimal(10, 3)
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@unique([productId, ingredientId, sizeName])
+}
+
+model Order {
+  id             Int         @id @default(autoincrement())
+  userId         Int         // Created by
+  tableId        Int?
+  customerName   String?
+  customerPhone  String?
+  source         OrderSource @default(POS)
+  status         OrderStatus @default(PENDING) // Disappears from kitchen ONLY when PAID
+  total          Decimal     @db.Decimal(10, 2)
+  deliveryFee    Decimal?    @db.Decimal(10, 2)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           User        @relation(fields: [userId], references: [id])
+  items          OrderItem[]
+  table          Table?      @relation(fields: [tableId], references: [id])
+  payments       Payment[]   // Multiple payments for mixed/split bills
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Payment {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  amount    Decimal  @db.Decimal(10, 2)
+  method    PaymentMethod
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  MIXED
+}
+
+enum OrderSource {
+  POS
+  WHATSAPP
+  DELIVERY
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  COMPLETED
+  CANCELLED
+  DELIVERED
+  PAID      // Only PAID orders disappear from kitchen
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  sizeName  String   @default("Personal")
+  quantity  Int
+  price     Decimal  @db.Decimal(10, 2) // Saved price at time of order
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id])
+}
+
+model Table {
+  id     Int     @id @default(autoincrement())
+  number String  @unique
+  status String  @default("AVAILABLE") // AVAILABLE, OCCUPIED, RESERVED
+  orders Order[]
+}
+
+model InventoryLog {
+  id           Int        @id @default(autoincrement())
+  ingredientId Int
+  amount       Decimal    @db.Decimal(10, 3)
+  type         LogType    // IN, OUT, ADJUSTMENT
+  reason       String?
+  createdAt    DateTime   @default(now())
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@index([createdAt])
+}
+
+enum LogType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+model Expense {
+  id          Int      @id @default(autoincrement())
+  amount      Decimal  @db.Decimal(10, 2)
+  description String
+  category    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+}
