@@ -57,9 +57,9 @@ export default function KitchenPage() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="h-24 flex items-center justify-between px-10 bg-zinc-950 border-b border-zinc-800">
+        <header className="h-20 lg:h-24 flex items-center justify-between px-4 md:px-10 bg-zinc-950 border-b border-zinc-800">
           <div>
-            <h1 className="text-3xl font-black text-white tracking-tight uppercase">
+            <h1 className="text-xl md:text-3xl font-black text-white tracking-tight uppercase">
               Monitor de Preparación
             </h1>
             <div className="flex items-center gap-2 mt-1">
@@ -90,7 +90,7 @@ export default function KitchenPage() {
         </header>
 
         {/* Orders Grid */}
-        <section className="flex-1 overflow-y-auto p-10 bg-zinc-900 custom-scrollbar">
+        <section className="flex-1 overflow-y-auto p-4 md:p-10 bg-zinc-900 custom-scrollbar">
           {activeOrders.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-zinc-600">
               <ChefHat size={120} className="opacity-20 mb-8" />

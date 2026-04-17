@@ -216,7 +216,7 @@ export default function POSPage() {
     <div className="flex h-screen bg-zinc-50 overflow-hidden font-sans relative">
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="h-24 lg:h-32 flex flex-col justify-center px-4 lg:px-10 bg-white border-b border-zinc-200 shrink-0 relative z-20">
+        <header className="h-20 md:h-24 lg:h-32 flex flex-col justify-center px-4 md:px-10 bg-white border-b border-zinc-200 shrink-0 relative z-20">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3 lg:gap-4">
               <div className="lg:hidden">
@@ -233,7 +233,7 @@ export default function POSPage() {
                 </button>
               </div>
               <div>
-                <h1 className="text-lg lg:text-3xl font-black text-zinc-950 tracking-tight leading-none">Terminal POS</h1>
+                <h1 className="text-xl md:text-3xl font-black text-zinc-950 tracking-tight leading-none">Terminal POS</h1>
                 <p className="hidden sm:block text-zinc-400 font-bold mt-1 uppercase tracking-widest text-[8px] lg:text-[10px]">Operador: {role || 'Personal'}</p>
               </div>
             </div>
@@ -279,7 +279,7 @@ export default function POSPage() {
 
         {/* Dynamic Content Area */}
         {viewMode === 'NEW' ? (
-          <section className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-6 lg:space-y-8 bg-zinc-50/50">
+          <section className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-8 bg-zinc-50/50">
             <div className="flex gap-2 lg:gap-3 overflow-x-auto pb-2 no-scrollbar">
               {categories.map(cat => (
                 <button
@@ -300,7 +300,7 @@ export default function POSPage() {
                 <Loader2 className="animate-spin text-orange-500" size={48} />
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-4 lg:gap-6 pb-20 lg:pb-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-6 pb-24 md:pb-0">
                 {filteredProducts.map(product => (
                   <ProductCard
                     key={product.id}

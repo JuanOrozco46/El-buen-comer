@@ -132,7 +132,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 font-sans selection:bg-orange-600/10">
-      <div className="flex flex-col flex-1 max-w-7xl mx-auto px-8 py-10 gap-8">
+      <div className="flex flex-col flex-1 max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10 gap-6 md:gap-8">
         
         {/* Header */}
         <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
@@ -141,7 +141,7 @@ export default function Dashboard() {
               <span className="w-1.5 h-1.5 bg-orange-600 rounded-full" />
               Operaciones en Tiempo Real
             </p>
-            <h1 className="text-4xl font-black tracking-tighter text-zinc-950">
+            <h1 className="text-2xl md:text-4xl font-black tracking-tighter text-zinc-950">
               Panel <span className="text-orange-600">Dashboard</span>
             </h1>
           </div>
@@ -162,23 +162,25 @@ export default function Dashboard() {
         </header>
 
         {/* Date Range Filter */}
-        <div className="flex flex-wrap items-center gap-3 bg-zinc-50 p-3 rounded-2xl border border-zinc-100">
-          <Calendar size={16} className="text-zinc-400 ml-2" />
-          {(Object.keys(rangeLabels) as DateRange[]).filter(r => r !== "custom").map(range => (
-            <button
-              key={range}
-              onClick={() => handleRangeChange(range)}
-              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all ${
-                selectedRange === range
-                  ? "bg-zinc-900 text-white shadow-md"
-                  : "text-zinc-500 hover:bg-white hover:shadow-sm"
-              }`}
-            >
-              {rangeLabels[range]}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2 md:gap-3 bg-zinc-50 p-2 md:p-3 rounded-2xl border border-zinc-100">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar w-full lg:w-auto pb-2 lg:pb-0">
+            <Calendar size={16} className="text-zinc-400 shrink-0 ml-2" />
+            {(Object.keys(rangeLabels) as DateRange[]).filter(r => r !== "custom").map(range => (
+              <button
+                key={range}
+                onClick={() => handleRangeChange(range)}
+                className={`px-4 md:px-5 py-2 md:py-2.5 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-[0.1em] transition-all whitespace-nowrap ${
+                  selectedRange === range
+                    ? "bg-zinc-900 text-white shadow-md"
+                    : "text-zinc-500 hover:bg-white hover:shadow-sm"
+                }`}
+              >
+                {rangeLabels[range]}
+              </button>
+            ))}
+          </div>
           
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 w-full lg:w-auto lg:ml-auto pt-2 lg:pt-0 border-t lg:border-t-0 border-zinc-200/50">
             <input 
               type="date" 
               value={customFrom}
