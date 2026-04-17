@@ -532,7 +532,7 @@ export default function POSPage() {
 
       {/* Floating Bottom Bar for Mobile Cart Status */}
       {viewMode === 'NEW' && cart.length > 0 && !showMobileSummary && (
-        <div className="lg:hidden fixed bottom-6 left-6 right-6 z-40 animate-in slide-in-from-bottom-10">
+        <div className="lg:hidden fixed bottom-24 left-6 right-6 z-40 animate-in slide-in-from-bottom-10">
           <button
             onClick={() => setShowMobileSummary(true)}
             className="w-full bg-orange-600 text-white p-6 rounded-[32px] shadow-2xl shadow-orange-600/40 flex items-center justify-between font-black uppercase tracking-widest text-xs"

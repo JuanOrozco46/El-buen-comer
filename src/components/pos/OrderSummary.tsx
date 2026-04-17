@@ -47,7 +47,7 @@ export const OrderSummary = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 text-white p-6 shadow-2xl">
+    <div className="flex flex-col h-full bg-zinc-900 text-white p-6 pb-32 md:pb-6 shadow-2xl">
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-orange-500 rounded-lg">
