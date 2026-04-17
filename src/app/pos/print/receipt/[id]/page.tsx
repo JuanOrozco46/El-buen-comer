@@ -67,15 +67,24 @@ export default function CustomerReceiptPage() {
     <>
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
-          body * { visibility: hidden; }
-          #thermal-receipt, #thermal-receipt * { visibility: visible; }
+          /* Hide everything outside the receipt */
+          body * {
+            display: none !important;
+          }
+          /* Show only the receipt and its content */
+          html, body, #thermal-receipt, #thermal-receipt * {
+            display: block !important;
+            visibility: visible !important;
+          }
           #thermal-receipt {
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%;
+            width: 58mm;
             margin: 0;
-            padding: 0;
+            padding: 4mm;
+            background: white;
+            color: black;
           }
           @page {
             size: 58mm auto;
@@ -84,104 +93,90 @@ export default function CustomerReceiptPage() {
         }
       `}} />
 
+      {/* WEB VIEW / PREVIEW */}
       <div className="flex-1 bg-zinc-100 min-h-screen flex flex-col items-center justify-center p-8 relative z-10 print:hidden overflow-y-auto">
         <div className="mb-8 text-center max-w-sm">
-          <div className={`inline-flex p-3 rounded-full mb-4 ${isPaid ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-             {isPaid ? <CheckCircle2 size={32} /> : <Printer size={32} />}
+          <div className={`inline-flex p-4 rounded-3xl mb-4 shadow-xl ${isPaid ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-amber-500 text-white shadow-amber-500/20'}`}>
+             {isPaid ? <CheckCircle2 size={32} strokeWidth={3} /> : <Printer size={32} strokeWidth={3} />}
           </div>
-          <h1 className="text-2xl font-black mb-2">{isPaid ? "Recibo de Venta" : "Pre-cuenta de Mesa"}</h1>
-          <p className="text-zinc-500 text-xs">Vista optimizada para la impresora térmica de 58mm.</p>
+          <h1 className="text-2xl font-black mb-1 tracking-tight">{isPaid ? "Recibo de Pago" : "Pre-cuenta"}</h1>
+          <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">Orden #{order.id}</p>
           
-          <div className="flex gap-2 mt-6">
+          <div className="flex flex-col gap-3 mt-8">
             <button 
               onClick={() => window.print()}
-              className="flex-1 bg-zinc-900 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl hover:bg-zinc-800 transition-all uppercase tracking-widest text-[10px]"
+              className={`w-full font-black py-5 rounded-[24px] flex items-center justify-center gap-3 shadow-xl transition-all uppercase tracking-widest text-xs ${isPaid ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20' : 'bg-amber-600 text-white hover:bg-amber-500 shadow-amber-600/20'}`}
             >
-              <Printer size={16} /> Imprimir
+              <Printer size={20} /> Imprimir Recibo
             </button>
             <button 
               onClick={() => router.back()}
-              className="flex-1 bg-white border border-zinc-200 text-zinc-900 font-black py-4 flex items-center justify-center gap-2 rounded-2xl hover:bg-zinc-50 transition-all uppercase tracking-widest text-[10px]"
+              className="w-full bg-white border border-zinc-200 text-zinc-900 font-black py-4 flex items-center justify-center gap-2 rounded-[24px] hover:bg-zinc-50 transition-all uppercase tracking-widest text-[10px]"
             >
-              Cerrar
+              Volver al Terminal
             </button>
           </div>
         </div>
 
-        {/* RECEIPTS CONTAINER */}
-        <div className="bg-white shadow-2xl overflow-hidden" style={{ width: "250px" }}>
+        {/* RECEIPT PREVIEW */}
+        <div className="bg-white shadow-2xl rounded-3xl overflow-hidden border border-zinc-200" style={{ width: "280px" }}>
           
-          <div id="thermal-receipt" className="bg-white text-black p-4 font-mono text-[11px] leading-[1.3]">
+          <div id="thermal-receipt" className="bg-white text-black p-5 font-mono text-[11px] leading-tight">
             
-            {/* Business Header */}
-            <div className="text-center mb-4 space-y-1">
-              <h2 className="font-extrabold text-[18px] uppercase tracking-tighter">EL BUEN COMER</h2>
-              <p className="text-[10px] font-bold">Arrocería & Grill</p>
-              <p className="text-[9px]">Calle Ficticia #123 - Bogotá</p>
-              <p className="text-[9px]">Tel: 300 000 0000</p>
+            {/* Header */}
+            <div className="text-center mb-6 border-b-2 border-black border-dashed pb-4">
+              <h2 className="font-black text-[20px] uppercase tracking-tighter">EL BUEN COMER</h2>
+              <p className="text-[10px] font-bold mt-1 opacity-70 italic">Sabor que te hace volver</p>
             </div>
-
-            <div className="border-t border-black border-dashed my-2" />
 
             {/* Order Info */}
-            <div className="text-[10px] space-y-0.5">
+            <div className="text-[11px] space-y-1 font-bold mb-4">
               <div className="flex justify-between">
-                <span>Orden:</span>
-                <span className="font-bold">#{order.id}</span>
+                <span>ORDEN:</span>
+                <span>#{order.id}</span>
               </div>
               <div className="flex justify-between">
-                <span>Fecha:</span>
-                <span>{dateStr}</span>
+                <span>FECHA:</span>
+                <span className="text-right">{dateStr}</span>
               </div>
               <div className="flex justify-between">
-                <span>Cliente:</span>
-                <span className="font-bold">{order.customerName || order.table?.number || "General"}</span>
+                <span>MESA/REF:</span>
+                <span className="font-black truncate max-w-[120px]">{order.table?.number || order.customerName || "GENERAL"}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Cajero:</span>
-                <span>{order.user?.name}</span>
+              <div className="flex justify-between opacity-70">
+                <span>CAJERO:</span>
+                <span className="truncate">{order.user?.name}</span>
               </div>
             </div>
 
-            <div className="border-t border-black border-dashed my-2" />
+            <div className="border-t-2 border-black border-dashed my-4" />
 
-            {/* Items Table Header */}
-            <div className="flex justify-between font-bold text-[10px] mb-1">
-              <span className="w-8">Cant</span>
-              <span className="flex-1">Producto</span>
-              <span className="w-16 text-right">Total</span>
-            </div>
-
-            {/* Items List */}
-            <div className="space-y-1">
+            {/* Items Table */}
+            <div className="space-y-3 mb-6">
               {order.items.map((item: any) => (
-                <div key={item.id} className="flex justify-between items-start text-[10px]">
-                  <span className="w-8">[{item.quantity}]</span>
-                  <div className="flex-1 flex flex-col">
-                    <span className="uppercase">{item.product.name}</span>
-                    <span className="text-[9px] opacity-70">({item.sizeName})</span>
+                <div key={item.id} className="flex justify-between items-start text-[11px]">
+                  <span className="font-black">[{item.quantity}]</span>
+                  <div className="flex-1 px-2 flex flex-col">
+                    <span className="uppercase font-bold">{item.product.name}</span>
+                    <span className="text-[9px] opacity-70">{item.sizeName}</span>
                   </div>
-                  <span className="w-16 text-right font-bold">
+                  <span className="font-black text-right">
                     ${(Number(item.price) * item.quantity).toLocaleString()}
                   </span>
                 </div>
               ))}
             </div>
 
-            <div className="border-t border-black border-dashed mt-4 mb-2" />
-
-            {/* Totals */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-[14px]">
-                <span className="font-black">TOTAL:</span>
-                <span className="font-black">${Number(order.total).toLocaleString()}</span>
+            <div className="border-t-2 border-black border-dashed pt-4 space-y-2">
+              <div className="flex justify-between text-[18px] font-black">
+                <span>TOTAL:</span>
+                <span>${Number(order.total).toLocaleString()}</span>
               </div>
               
               {isPaid && order.payments && order.payments.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-black border-dotted">
-                   <p className="text-[9px] font-bold uppercase mb-1">Pagado con:</p>
+                <div className="mt-4 pt-3 border-t-2 border-black border-dotted space-y-1">
                    {order.payments.map((p: any, idx: number) => (
-                     <div key={idx} className="flex justify-between text-[10px]">
+                     <div key={idx} className="flex justify-between text-[11px] font-bold">
                         <span className="uppercase">{p.method}</span>
                         <span>${Number(p.amount).toLocaleString()}</span>
                      </div>
@@ -190,19 +185,13 @@ export default function CustomerReceiptPage() {
               )}
             </div>
 
-            <div className="border-t border-black border-dashed mt-4 mb-2" />
-
-            {/* Footer */}
-            <div className="text-center text-[10px] space-y-1">
+            <div className="border-t-2 border-black border-dashed mt-6 pt-4 text-center">
               {!isPaid && (
-                <p className="font-black border border-black p-1 uppercase mb-2">*** PRE-CUENTA ***</p>
+                <p className="font-black border-4 border-black p-2 uppercase text-[14px] mb-4">*** PRE-CUENTA ***</p>
               )}
-              <p className="font-bold">¡Gracias por tu compra!</p>
-              <p className="text-[9px]">Siguenos en @elbuencomer</p>
-              <div className="mt-4 opacity-50 text-[8px]">
-                <p>Software Powered by Antigravity</p>
-                <p>{new Date().getFullYear()}</p>
-              </div>
+              <h3 className="font-black text-[14px] mb-1">¡GRACIAS POR TU COMPRA!</h3>
+              <p className="text-[10px] font-bold opacity-60">Software: El Buen Comer POS</p>
+              <p className="text-[10px] font-bold opacity-60">Visítanos pronto</p>
             </div>
 
           </div>

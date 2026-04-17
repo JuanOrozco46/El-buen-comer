@@ -67,111 +67,124 @@ export default function KitchenPrintTicket() {
   return (
     <>
       <style dangerouslySetInnerHTML={{__html: `
-        /* Hide everything by default for print */
         @media print {
+          /* Hide everything outside the ticket */
           body * {
-            visibility: hidden;
+            display: none !important;
           }
-          /* Show only the ticket */
-          #thermal-ticket, #thermal-ticket * {
-            visibility: visible;
+          /* Show only the ticket and its content */
+          html, body, #thermal-ticket, #thermal-ticket * {
+            display: block !important;
+            visibility: visible !important;
           }
           #thermal-ticket {
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%;
+            width: 58mm; /* Standard thermal width */
             margin: 0;
-            padding: 0;
+            padding: 4mm;
+            background: white;
+            color: black;
           }
           @page {
-            /* General thermal printer width */
             size: 58mm auto;
             margin: 0;
-          }
-          nav {
-            display: none !important;
           }
         }
       `}} />
 
-      {/* VISTA DE PUESTA A PUNTO (Para que el usuario lo vea en la web normal antes de imprimir) */}
+      {/* WEB VIEW / PREVIEW */}
       <div className="flex-1 bg-zinc-100 min-h-screen flex flex-col items-center justify-center p-8 relative z-10 print:hidden overflow-y-auto">
         <div className="mb-8 text-center max-w-sm">
-          <h1 className="text-2xl font-black mb-2">Simulador de Tirilla SAT 22TUE</h1>
-          <p className="text-zinc-500 text-xs">Así es exactamente como se enviará a la impresora de cocina de forma automática.</p>
-          <button 
-            onClick={() => window.print()}
-            className="mt-6 w-full bg-zinc-900 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 shadow-xl hover:bg-zinc-800 transition-all uppercase tracking-widest text-[10px]"
-          >
-            <Printer size={16} /> Forzar Impresión de Prueba
-          </button>
-          <button 
-            onClick={() => router.back()}
-            className="mt-3 w-full bg-white border border-zinc-200 text-zinc-900 font-black py-4 flex items-center justify-center gap-2 rounded-2xl hover:bg-zinc-50 transition-all uppercase tracking-widest text-[10px]"
-          >
-            Volver al POS
-          </button>
+          <h1 className="text-2xl font-black mb-2 tracking-tight">Impresión de Comanda</h1>
+          <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Orden #{order.id}</p>
+          
+          <div className="mt-8 flex flex-col gap-3">
+            <button 
+              onClick={() => window.print()}
+              className="w-full bg-orange-600 text-white font-black py-5 rounded-[24px] flex items-center justify-center gap-3 shadow-xl shadow-orange-600/20 hover:bg-orange-500 transition-all uppercase tracking-widest text-xs"
+            >
+              <Printer size={20} /> Imprimir Comanda
+            </button>
+            <button 
+              onClick={() => router.back()}
+              className="w-full bg-white border border-zinc-200 text-zinc-900 font-black py-4 flex items-center justify-center gap-2 rounded-[24px] hover:bg-zinc-50 transition-all uppercase tracking-widest text-[10px]"
+            >
+              Cerrar y Volver
+            </button>
+          </div>
         </div>
 
-        {/* CONTENEDOR 58mm (aprox 220px/250px en web) */}
-        <div className="bg-white shadow-2xl overflow-hidden" style={{ width: "250px" }}>
-          
-          {/* Aquí inicia el ticket real */}
-          <div id="thermal-ticket" className="bg-white text-black p-3 font-mono text-[11px] leading-[1.2]">
+        {/* CONTAINER PREVIEW (250px is close to 58mm) */}
+        <div className="bg-white shadow-2xl rounded-3xl overflow-hidden border border-zinc-200" style={{ width: "280px" }}>
+          <div id="thermal-ticket" className="bg-white text-black p-5 font-mono text-[12px] leading-tight">
             
             {/* Header */}
-            <div className="text-center mb-4 border-b border-black border-dashed pb-2">
-              <h2 className="font-extrabold text-[16px] uppercase tracking-tighter mb-1">COMANDA COCINA</h2>
-              <p className="font-bold">ORDEN #{order.id}</p>
+            <div className="text-center mb-6 border-b-2 border-black border-dashed pb-4">
+              <h2 className="font-black text-[18px] uppercase tracking-tighter mb-1">COMANDA</h2>
+              <p className="font-bold text-[14px]">#{order.id}</p>
+              {order.table && (
+                <p className="mt-2 bg-black text-white px-2 py-1 inline-block text-[14px] font-black">
+                  MESA {order.table.number}
+                </p>
+              )}
             </div>
 
-            {/* Meta */}
-            <div className="mb-4 text-[10px] space-y-1">
+            {/* Meta Info */}
+            <div className="mb-6 text-[11px] space-y-1 font-bold">
               <div className="flex justify-between">
-                <span>Fecha:</span>
+                <span>FECHA:</span>
                 <span>{dateStr.split(",")[0]}</span>
               </div>
               <div className="flex justify-between">
-                <span>Hora:</span>
+                <span>HORA:</span>
                 <span>{dateStr.split(",")[1]?.trim()}</span>
               </div>
-              <div className="flex justify-between font-bold">
-                <span>Mesa/Cliente:</span>
-                <span className="text-right truncate max-w-[120px]">{order.table?.number || order.customerName || "S/N"}</span>
-              </div>
               <div className="flex justify-between">
-                <span>Tomado por:</span>
-                <span className="truncate max-w-[100px]">{order.user?.name || "Bot/Auto"}</span>
+                <span>MESERO:</span>
+                <span className="truncate">{order.user?.name || "PERSONAL"}</span>
               </div>
             </div>
 
-            <div className="border-t border-black border-dashed mb-2" />
+            <div className="border-t-2 border-black border-dashed mb-4" />
 
-            {/* Items */}
-            <div className="space-y-4 mb-4">
+            {/* Items with emphasis on quantity */}
+            <div className="space-y-6 mb-8">
               {order.items.map((item: any) => (
-                <div key={item.id} className="font-bold">
-                  {/* Quantity and Name */}
-                  <div className="flex gap-2">
-                    <span className="text-[14px]">[{item.quantity}]</span>
-                    <span className="uppercase text-[12px]">{item.product.name}</span>
+                <div key={item.id} className="flex flex-col">
+                  <div className="flex items-start gap-3">
+                    <span className="text-[20px] font-black border-2 border-black px-2 leading-none">
+                      {item.quantity}
+                    </span>
+                    <div className="flex flex-col flex-1">
+                      <span className="uppercase text-[14px] font-black leading-tight">
+                        {item.product.name}
+                      </span>
+                      <span className="text-[11px] font-bold opacity-70 mt-1">
+                        [{item.sizeName}]
+                      </span>
+                    </div>
                   </div>
-                  {/* Options / Sizes underneath */}
-                  <div className="pl-6 text-[10px] mt-1 space-y-1">
-                    <p className="opacity-80">{"->"} Tamaño: {item.sizeName}</p>
-                    {/* Placeholder for custom notes if they exist */}
-                    {item.notes && <p className="opacity-80 break-words">{"->"} Nota: {item.notes}</p>}
-                  </div>
+                  
+                  {/* Important Notes */}
+                  {item.notes && (
+                    <div className="mt-2 ml-10 p-2 border-2 border-black border-dotted bg-zinc-50">
+                      <p className="text-[10px] font-black uppercase mb-1">Petición Especial:</p>
+                      <p className="text-[12px] font-bold italic leading-tight uppercase">
+                        *** {item.notes} ***
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
 
-            <div className="border-t border-black border-dashed mb-2" />
+            <div className="border-t-2 border-black border-dashed mb-4" />
 
-            {/* Footer */}
-            <div className="text-center text-[9px] mt-4 pt-1 mb-8">
-              <p>------------- FIN -------------</p>
+            <div className="text-center text-[10px] mt-2 font-black">
+              <p className="tracking-[0.2em] mb-4">--- FIN DE COMANDA ---</p>
+              <p>EL BUEN COMER</p>
             </div>
 
           </div>

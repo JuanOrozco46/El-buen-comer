@@ -70,6 +70,7 @@ export async function POST(req: Request) {
               sizeName: item.sizeName || "Personal",
               quantity: Number(item.quantity),
               price: Number(item.price),
+              notes: item.notes || null,
             })),
           },
           payments: (body.payments && body.payments.length > 0) ? {

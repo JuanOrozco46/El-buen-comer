@@ -33,6 +33,7 @@ export interface CartItem {
   product: Product;
   size: ProductSize;
   quantity: number;
+  notes?: string;
 }
 
 export interface OrderItem {
@@ -42,6 +43,7 @@ export interface OrderItem {
   sizeName: string;
   quantity: number;
   price: number;
+  notes?: string;
 }
 
 export interface Payment {
@@ -62,4 +64,8 @@ export interface FullOrder {
   createdAt: Date | string;
   items: OrderItem[];
   payments?: Payment[];
+}export interface Table {
+  id: number;
+  number: string;
+  status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 }

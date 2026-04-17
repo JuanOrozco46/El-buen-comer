@@ -140,6 +140,7 @@ model OrderItem {
   sizeName  String   @default("Personal")
   quantity  Int
   price     Decimal  @db.Decimal(10, 2) // Saved price at time of order
+  notes     String?  @db.Text
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product  @relation(fields: [productId], references: [id])
 }

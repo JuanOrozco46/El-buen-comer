@@ -107,9 +107,14 @@ export default function KitchenPage() {
                 >
                   {/* Ticket Header */}
                   <div className="px-6 py-4 bg-zinc-800 border-b border-zinc-700 flex justify-between items-center">
-                    <h2 className="text-2xl font-black text-white">
-                      #{order.id}
-                    </h2>
+                    <div>
+                      <h2 className="text-2xl font-black text-white">
+                        #{order.id}
+                      </h2>
+                      {order.table && (
+                        <p className="text-[10px] font-black uppercase text-orange-500 tracking-[0.2em] mt-0.5">Mesa {order.table.number}</p>
+                      )}
+                    </div>
                     <span className="text-zinc-400 font-mono font-bold text-sm tracking-widest">
                       {new Date(order.createdAt).toLocaleTimeString([], {
                         hour: "2-digit",
@@ -132,6 +137,12 @@ export default function KitchenPage() {
                           <span className="text-xs font-black text-orange-400 uppercase tracking-widest mt-1">
                             Tamaño: {item.sizeName}
                           </span>
+                          {item.notes && (
+                            <div className="mt-2 p-2 bg-zinc-900 border-l-4 border-orange-600 rounded-r-lg">
+                              <p className="text-xs font-black text-orange-50 uppercase tracking-widest mb-0.5">Instrucción:</p>
+                              <p className="text-sm font-bold text-white italic">{item.notes}</p>
+                            </div>
+                          )}
                         </div>
                       </li>
                     ))}

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Product, ProductSize, CartItem, OrderSource, FullOrder } from "../../types";
+import { Product, ProductSize, CartItem, OrderSource, FullOrder, Table } from "../../types";
 import { ProductCard } from "../../components/pos/ProductCard";
 import { OrderSummary } from "../../components/pos/OrderSummary";
-import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat } from "lucide-react";
+import { TableMap } from "../../components/pos/TableMap";
+import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, MapPin, ChevronLeft } from "lucide-react";
 
 export default function POSPage() {
   const { data: session, status } = useSession();
@@ -16,9 +17,11 @@ export default function POSPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [showMobileSummary, setShowMobileSummary] = useState(false);
+  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
 
   // Tab control: 'NEW' for placing orders, 'PENDING' for cashing out
   const [viewMode, setViewMode] = useState<'NEW' | 'PENDING'>('NEW');
+  const [viewStep, setViewStep] = useState<'TABLE' | 'PRODUCTS'>('TABLE');
   const [isPanicActive, setIsPanicActive] = useState(false);
 
   // Split payment modal state
@@ -74,8 +77,16 @@ export default function POSPage() {
             ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { product, size, quantity: 1 }];
+      return [...prev, { product, size, quantity: 1, notes: "" }];
     });
+    // On mobile, show feedback or open cart?
+  };
+
+  const updateCartItemNotes = (productId: number, sizeId: number, notes: string) => {
+    setCart(prev => prev.map(item => 
+      (item.product.id === productId && item.size.id === sizeId)
+        ? { ...item, notes } : item
+    ));
   };
 
   const removeFromCart = (productId: number, sizeId: number) => {
@@ -91,7 +102,11 @@ export default function POSPage() {
     });
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    setCart([]);
+    setSelectedTable(null);
+    setViewStep('TABLE');
+  };
 
   const refreshOrders = async () => {
     const ordRes = await fetch('/api/orders?status=active');
@@ -103,10 +118,13 @@ export default function POSPage() {
 
   const placeOrder = async (actionMethod: string) => {
     try {
+      if (!selectedTable) return alert("Selecciona una mesa");
+
       const subtotal = cart.reduce((s, i) => s + (i.size.price * i.quantity), 0);
 
       const orderData = {
         source: OrderSource.POS,
+        tableId: selectedTable.id,
         total: subtotal,
         status: actionMethod === 'PENDING' ? 'PENDING' : 'COMPLETED',
         payments: actionMethod === 'PENDING' ? [] : [{ method: actionMethod, amount: subtotal }],
@@ -114,7 +132,8 @@ export default function POSPage() {
           productId: item.product.id,
           sizeName: item.size.name,
           quantity: item.quantity,
-          price: item.size.price
+          price: item.size.price,
+          notes: item.notes
         }))
       };
 
@@ -232,8 +251,20 @@ export default function POSPage() {
                   )}
                 </button>
               </div>
-              <div>
-                <h1 className="text-xl md:text-3xl font-black text-zinc-950 tracking-tight leading-none">Terminal POS</h1>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  {viewStep === 'PRODUCTS' && (
+                    <button 
+                      onClick={() => setViewStep('TABLE')}
+                      className="p-2 -ml-2 hover:bg-zinc-100 rounded-xl transition-colors text-zinc-400 hover:text-orange-600"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                  )}
+                  <h1 className="text-xl md:text-3xl font-black text-zinc-950 tracking-tight leading-none">
+                    {viewMode === 'NEW' ? (viewStep === 'TABLE' ? 'Seleccionar Mesa' : `Mesa ${selectedTable?.number}`) : 'Cuentas'}
+                  </h1>
+                </div>
                 <p className="hidden sm:block text-zinc-400 font-bold mt-1 uppercase tracking-widest text-[8px] lg:text-[10px]">Operador: {role || 'Personal'}</p>
               </div>
             </div>
@@ -263,8 +294,8 @@ export default function POSPage() {
             </div>
           </div>
 
-          {viewMode === 'NEW' && (
-            <div className="relative w-full">
+          {viewMode === 'NEW' && viewStep === 'PRODUCTS' && (
+            <div className="relative w-full animate-in fade-in slide-in-from-top-2">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
               <input
                 type="text"
@@ -279,44 +310,56 @@ export default function POSPage() {
 
         {/* Dynamic Content Area */}
         {viewMode === 'NEW' ? (
-          <section className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-8 bg-zinc-50/50">
-            <div className="flex gap-2 lg:gap-3 overflow-x-auto pb-2 no-scrollbar">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-4 lg:px-6 py-2 lg:py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === cat
-                      ? "bg-zinc-900 text-white shadow-xl shadow-zinc-900/20"
-                      : "bg-white text-zinc-400 border border-zinc-200"
-                    }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center h-64">
-                <Loader2 className="animate-spin text-orange-500" size={48} />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-6 pb-24 md:pb-0">
-                {filteredProducts.map(product => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    onAdd={addToCart}
-                  />
+          viewStep === 'TABLE' ? (
+            <section className="flex-1 overflow-y-auto bg-zinc-50/50 animate-in fade-in">
+              <TableMap 
+                selectedTableId={selectedTable?.id}
+                onSelect={(table) => {
+                  setSelectedTable(table);
+                  setViewStep('PRODUCTS');
+                }}
+              />
+            </section>
+          ) : (
+            <section className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-8 bg-zinc-50/50 animate-in fade-in">
+              <div className="flex gap-2 lg:gap-3 overflow-x-auto pb-2 no-scrollbar">
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`px-4 lg:px-6 py-2 lg:py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === cat
+                        ? "bg-zinc-900 text-white shadow-xl shadow-zinc-900/20"
+                        : "bg-white text-zinc-400 border border-zinc-200"
+                      }`}
+                  >
+                    {cat}
+                  </button>
                 ))}
-                {filteredProducts.length === 0 && (
-                  <div className="col-span-full flex flex-col items-center justify-center h-48 text-zinc-400">
-                    <Search size={48} className="opacity-20 mb-4" />
-                    <p className="font-bold uppercase tracking-widest text-xs">Sin resultados para "{searchQuery}"</p>
-                  </div>
-                )}
               </div>
-            )}
-          </section>
+
+              {loading ? (
+                <div className="flex items-center justify-center h-64">
+                  <Loader2 className="animate-spin text-orange-500" size={48} />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-6 pb-24 md:pb-0">
+                  {filteredProducts.map(product => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onAdd={addToCart}
+                    />
+                  ))}
+                  {filteredProducts.length === 0 && (
+                    <div className="col-span-full flex flex-col items-center justify-center h-48 text-zinc-400">
+                      <Search size={48} className="opacity-20 mb-4" />
+                      <p className="font-bold uppercase tracking-widest text-xs">Sin resultados para "{searchQuery}"</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )
         ) : (
           <section className="flex-1 overflow-y-auto p-4 lg:p-8 bg-zinc-50">
             <h2 className="text-xl lg:text-2xl font-black mb-6 text-zinc-800 tracking-tight">
@@ -419,7 +462,9 @@ export default function POSPage() {
                 items={cart}
                 role={role}
                 isPanicActive={isPanicActive}
+                selectedTable={selectedTable}
                 onRemoveItem={removeFromCart}
+                onUpdateNotes={updateCartItemNotes}
                 onClearCart={clearCart}
                 onPlaceOrder={placeOrder}
               />
