@@ -36,7 +36,7 @@ export function Navigation() {
   const visibleNavItems = NAV_ITEMS.filter(item => item.roles.includes(currentRole as string));
 
   return (
-    <aside className="hidden md:flex w-24 flex-col items-center py-8 gap-10 bg-white border-r border-zinc-200 z-50 shrink-0">
+    <aside className="hidden md:flex w-24 flex-col items-center py-8 gap-10 bg-white border-r border-zinc-200 z-50 shrink-0 print:hidden text-zinc-900">
       <Link href="/" className="w-14 h-14 bg-orange-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-orange-600/30 hover:scale-105 transition-transform pointer-events-none md:pointer-events-auto">
         <Flame size={32} />
       </Link>

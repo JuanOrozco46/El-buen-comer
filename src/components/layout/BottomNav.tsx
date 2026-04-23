@@ -29,7 +29,7 @@ export function BottomNav() {
   const visibleNavItems = NAV_ITEMS.filter(item => item.roles.includes(currentRole as string));
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 px-6 py-3 flex justify-between items-center z-[100] safe-area-inset-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 px-6 py-3 flex justify-between items-center z-[100] safe-area-inset-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.05)] print:hidden">
       {visibleNavItems.map((item) => {
         const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
         return (

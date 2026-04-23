@@ -79,6 +79,15 @@ export default function CustomerReceiptPage() {
             padding: 0 !important;
             background: white !important;
           }
+          /* Hide everything except the print area */
+          body > *:not(#print-area), 
+          header, 
+          nav, 
+          aside, 
+          footer,
+          .print\:hidden {
+            display: none !important;
+          }
           #print-area {
             display: block !important;
             visibility: visible !important;
@@ -86,6 +95,9 @@ export default function CustomerReceiptPage() {
             padding: 2mm;
             background: white;
             margin: 0;
+            position: absolute;
+            left: 0;
+            top: 0;
           }
           @page {
             size: 58mm auto;
