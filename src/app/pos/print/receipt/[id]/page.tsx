@@ -66,7 +66,7 @@ export default function CustomerReceiptPage() {
   const isPaid = order.status === "PAID";
 
   return (
-    <div className="bg-zinc-50 flex flex-col items-center justify-center p-4">
+    <div className="bg-zinc-50 flex flex-col items-center justify-center p-4 print:p-0 print:block print:bg-white min-h-screen print:min-h-0">
       <style dangerouslySetInnerHTML={{ __html: `
         @media screen {
           #print-area { display: none; }
@@ -77,18 +77,11 @@ export default function CustomerReceiptPage() {
             min-height: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
-          }
-          body * {
-            display: none !important;
-          }
-          #print-area, #print-area * {
-            display: block !important;
-            visibility: visible !important;
+            background: white !important;
           }
           #print-area {
-            position: absolute;
-            left: 0;
-            top: 0;
+            display: block !important;
+            visibility: visible !important;
             width: 58mm;
             padding: 2mm;
             background: white;
