@@ -98,6 +98,11 @@ export default function CustomerReceiptPage() {
             position: absolute;
             left: 0;
             top: 0;
+            color: #000 !important;
+            -webkit-font-smoothing: none !important;
+            -moz-osx-font-smoothing: unset !important;
+            font-family: Arial, Helvetica, sans-serif !important;
+            text-shadow: none !important;
           }
           @page {
             size: 58mm auto;

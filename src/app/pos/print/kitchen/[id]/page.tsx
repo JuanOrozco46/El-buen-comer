@@ -96,6 +96,11 @@ export default function KitchenPrintTicket() {
             position: absolute;
             left: 0;
             top: 0;
+            color: #000 !important;
+            -webkit-font-smoothing: none !important;
+            -moz-osx-font-smoothing: unset !important;
+            font-family: Arial, Helvetica, sans-serif !important;
+            text-shadow: none !important;
           }
           @page {
             size: 58mm auto;
@@ -160,12 +165,14 @@ export default function KitchenPrintTicket() {
       {/* PRINT AREA */}
       <div id="print-area">
         <div className="bg-white text-black font-mono leading-tight p-2" style={{ fontSize: "14px" }}>
-          <div className="text-center mb-4 border-b-4 border-black pb-3">
-            <h2 className="font-black text-[22px] uppercase mb-1">COMANDA</h2>
-            <p className="font-black text-[32px] bg-black text-white inline-block px-4 py-1">
-              MESA {order.table?.number || "S/N"}
-            </p>
-            <p className="mt-2 font-black text-[18px]">ORDEN #{order.id}</p>
+          <div className="text-center mb-4 border-b-8 border-black pb-4">
+            <h2 className="font-black text-[24px] uppercase mb-1">COMANDA COCINA</h2>
+            <div className="border-8 border-black p-2 my-2">
+              <p className="font-black text-[42px] leading-none">
+                MESA {order.table?.number || "S/N"}
+              </p>
+            </div>
+            <p className="mt-2 font-black text-[20px]">ORDEN #{order.id}</p>
           </div>
 
           <div className="mb-4 text-[13px] font-black space-y-1">
@@ -189,7 +196,7 @@ export default function KitchenPrintTicket() {
             {order.items.map((item: any) => (
               <div key={item.id} className="flex flex-col border-b-2 border-black pb-2">
                 <div className="flex items-start gap-4">
-                  <span className="text-[36px] font-black border-4 border-black px-3 py-1 leading-none bg-black text-white">
+                  <span className="text-[48px] font-black border-[6px] border-black px-4 py-1 leading-none">
                     {item.quantity}
                   </span>
                   <div className="flex flex-col flex-1">
