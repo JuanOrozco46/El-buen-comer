@@ -12,17 +12,12 @@ export default function KitchenPage() {
   const [orders, setOrders] = useState<FullOrder[]>([]);
   const [isPanicActive, setIsPanicActive] = useState(false);
 
-  // Tracks which order IDs have already triggered auto-print this session
-  const printedOrderIds = useRef<Set<number>>(new Set());
-  // Flag: first fetch just registers existing orders (don't print them)
-  const isFirstFetch = useRef(true);
-
   // Auth guard — redirect if not authorized
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/login");
     }
-    if (status === "authenticated" && !["CHEF", "ADMIN", "CASHIER"].includes(session.user.role || "")) {
+    if (status === "authenticated" && !["CHEF", "ADMIN"].includes(session.user.role || "")) {
       router.push("/pos");
     }
   }, [status, session, router]);
@@ -32,24 +27,6 @@ export default function KitchenPage() {
       const res = await fetch("/api/orders?status=active");
       if (res.ok) {
         const data: FullOrder[] = await res.json();
-
-        if (isFirstFetch.current) {
-          // Register all currently active orders without printing
-          data.forEach((o) => printedOrderIds.current.add(o.id));
-          isFirstFetch.current = false;
-        } else {
-          // Detect new orders and auto-print their comanda
-          data.forEach((o) => {
-            if (!printedOrderIds.current.has(o.id)) {
-              printedOrderIds.current.add(o.id);
-              // Small delay so the print page has time to load
-              setTimeout(() => {
-                window.open(`/pos/print/kitchen/${o.id}`, "_blank");
-              }, 300);
-            }
-          });
-        }
-
         setOrders(data);
       }
       // Fetch Panic Status

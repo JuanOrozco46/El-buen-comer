@@ -4,6 +4,7 @@ import "@/app/globals.css";
 import { Navigation } from "../components/layout/Navigation";
 import { BottomNav } from "../components/layout/BottomNav";
 import { AuthProvider } from "../components/providers/AuthProvider";
+import { AutoPrintListener } from "../components/printing/AutoPrintListener";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,7 @@ export default function RootLayout({
     <html lang="es">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased text-zinc-900 bg-zinc-50`}>
         <AuthProvider>
+          <AutoPrintListener />
           <div className="flex min-h-screen">
             <Navigation />
             <div className="flex-1 relative overflow-hidden flex flex-col pb-20 md:pb-0">
