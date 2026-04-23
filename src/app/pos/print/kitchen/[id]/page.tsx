@@ -187,7 +187,7 @@ export default function KitchenPrintTicket() {
 
           <div className="space-y-8 mb-8">
             {order.items.map((item: any) => (
-              <div key={item.id} className="flex flex-col border-b border-zinc-300 pb-2">
+              <div key={item.id} className="flex flex-col border-b-2 border-black pb-2">
                 <div className="flex items-start gap-4">
                   <span className="text-[36px] font-black border-4 border-black px-3 py-1 leading-none bg-black text-white">
                     {item.quantity}

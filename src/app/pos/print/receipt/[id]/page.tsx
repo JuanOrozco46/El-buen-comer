@@ -160,7 +160,7 @@ export default function CustomerReceiptPage() {
         <div className="bg-white text-black font-mono leading-tight p-2" style={{ fontSize: "12px" }}>
           <div className="text-center mb-6 border-b-2 border-black border-dashed pb-4">
             <h2 className="font-black text-[20px] uppercase tracking-tighter">EL BUEN COMER</h2>
-            <p className="text-[10px] font-bold mt-1 opacity-70 italic">Sabor que te hace volver</p>
+            <p className="text-[10px] font-black mt-1 italic">Sabor que te hace volver</p>
           </div>
 
           <div className="text-[11px] font-bold mb-4 space-y-1">
@@ -186,7 +186,7 @@ export default function CustomerReceiptPage() {
                 <span className="font-black">[{item.quantity}]</span>
                 <div className="flex-1 px-2 flex flex-col">
                   <span className="uppercase font-bold">{item.product.name}</span>
-                  <span className="text-[9px] opacity-70">{item.sizeName}</span>
+                  <span className="text-[9px] font-black">{item.sizeName}</span>
                 </div>
                 <span className="font-black text-right">
                   ${(Number(item.price) * item.quantity).toLocaleString()}
@@ -218,7 +218,7 @@ export default function CustomerReceiptPage() {
               <p className="font-black border-4 border-black p-2 uppercase text-[14px] mb-4">*** PRE-CUENTA ***</p>
             )}
             <h3 className="font-black text-[14px] mb-1 uppercase tracking-tight">¡Gracias por tu compra!</h3>
-            <p className="text-[10px] font-bold opacity-60">Visítanos pronto</p>
+            <p className="text-[10px] font-black">Visítanos pronto</p>
           </div>
         </div>
       </div>
