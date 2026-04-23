@@ -13,7 +13,12 @@ export function ProductCard({ product, onAdd }: Props) {
   const selectedSize = product.sizes.find(s => s.id === selectedSizeId) || product.sizes[0];
 
   return (
-    <div className="bg-white rounded-[28px] p-3 md:p-4 lg:p-6 shadow-sm border border-zinc-200 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-500/5 transition-all flex flex-col justify-between group h-full">
+    <div className={`relative bg-white rounded-[28px] p-3 md:p-4 lg:p-6 shadow-sm border ${product.isSoldOut ? "border-red-200" : "border-zinc-200 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-500/5"} transition-all flex flex-col justify-between group h-full overflow-hidden`}>
+      {product.isSoldOut && (
+        <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
+        </div>
+      )}
+      <div className={product.isSoldOut ? "opacity-50 grayscale pointer-events-none" : ""}>
       <div>
         <div className="flex justify-between items-start mb-3 lg:mb-4">
           <h3 className="text-lg lg:text-xl font-black text-zinc-900 leading-tight tracking-tight">{product.name}</h3>
@@ -62,6 +67,7 @@ export function ProductCard({ product, onAdd }: Props) {
           >
             <Plus strokeWidth={4} size={24} />
           </button>
+        </div>
         </div>
       </div>
     </div>

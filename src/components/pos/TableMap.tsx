@@ -14,12 +14,18 @@ export function TableMap({ onSelect, selectedTableId }: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/tables")
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setTables(data);
-      })
-      .finally(() => setLoading(false));
+    const fetchTables = () => {
+      fetch("/api/tables")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setTables(data);
+        })
+        .finally(() => setLoading(false));
+    };
+
+    fetchTables();
+    const interval = setInterval(fetchTables, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   if (loading) {

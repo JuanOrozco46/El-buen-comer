@@ -24,7 +24,7 @@ export async function GET(req: Request) {
       include: {
         items: {
           include: {
-            product: true
+            product: { include: { sizes: true } }
           }
         },
         user: true,

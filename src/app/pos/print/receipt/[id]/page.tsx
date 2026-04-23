@@ -31,6 +31,8 @@ export default function CustomerReceiptPage() {
     if (!loading && order) {
       const timer = setTimeout(() => {
         window.print();
+        // Cierra la ventana/pestaña después de imprimir
+        setTimeout(() => window.close(), 500);
       }, 800);
       return () => clearTimeout(timer);
     }
@@ -64,12 +66,18 @@ export default function CustomerReceiptPage() {
   const isPaid = order.status === "PAID";
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-4">
+    <div className="bg-zinc-50 flex flex-col items-center justify-center p-4">
       <style dangerouslySetInnerHTML={{ __html: `
         @media screen {
           #print-area { display: none; }
         }
         @media print {
+          html, body {
+            height: auto !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           body * {
             display: none !important;
           }

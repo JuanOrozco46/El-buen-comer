@@ -6,7 +6,7 @@ import { Product, ProductSize, CartItem, OrderSource, FullOrder, Table } from ".
 import { ProductCard } from "../../components/pos/ProductCard";
 import { OrderSummary } from "../../components/pos/OrderSummary";
 import { TableMap } from "../../components/pos/TableMap";
-import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, MapPin, ChevronLeft } from "lucide-react";
+import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, ChevronLeft, CheckCircle2 } from "lucide-react";
 
 export default function POSPage() {
   const { data: session, status } = useSession();
@@ -29,6 +29,9 @@ export default function POSPage() {
   const [splitModal, setSplitModal] = useState<{ orderId: number; total: number } | null>(null);
   const [splitCash, setSplitCash] = useState("");
   const [splitTransfer, setSplitTransfer] = useState("");
+
+  // Receipt prompt modal
+  const [receiptModal, setReceiptModal] = useState<{ orderId: number } | null>(null);
 
   // Effect 1: Panic Mode Polling
   useEffect(() => {
@@ -64,7 +67,12 @@ export default function POSPage() {
         setLoading(false);
       }
     };
-    if (status === "authenticated") fetchInitialData();
+    if (status === "authenticated") {
+      fetchInitialData();
+      // Setup polling for live updates of pending orders from other devices
+      const interval = setInterval(refreshOrders, 3000);
+      return () => clearInterval(interval);
+    }
   }, [status]);
 
   const categories = ["Todos", ...Array.from(new Set(products.map(p => p.category)))];
@@ -121,6 +129,7 @@ export default function POSPage() {
   const placeOrder = async (actionMethod: string) => {
     try {
       if (!selectedTable) return alert("Selecciona una mesa");
+      if (cart.length === 0) return alert("Agrega al menos un producto al pedido");
 
       const subtotal = cart.reduce((s, i) => s + (i.size.price * i.quantity), 0);
 
@@ -209,10 +218,7 @@ export default function POSPage() {
       });
       if (res.ok) {
         setPendingOrders(prev => prev.filter(o => o.id !== orderId));
-        // Prompt to print receipt
-        if (confirm("Pago exitoso. ¿Deseas imprimir el recibo?")) {
-          window.open(`/pos/print/receipt/${orderId}`, '_blank');
-        }
+        setReceiptModal({ orderId });
       } else {
         const err = await res.json().catch(() => ({}));
         alert(`Error al procesar pago: ${err.error || 'Intenta de nuevo.'}`);
@@ -612,6 +618,41 @@ export default function POSPage() {
                 className="w-full bg-zinc-900 hover:bg-orange-600 text-white font-black py-5 rounded-3xl uppercase tracking-widest text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Confirmar Pago Dividido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt Prompt Modal */}
+      {receiptModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white rounded-[40px] w-full max-w-sm shadow-2xl overflow-hidden">
+            <div className="p-10 flex flex-col items-center text-center gap-4">
+              <div className="w-20 h-20 bg-emerald-500 text-white rounded-[28px] flex items-center justify-center shadow-xl shadow-emerald-500/30">
+                <CheckCircle2 size={40} strokeWidth={2.5} />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-zinc-900 tracking-tight">¡Pago Registrado!</h3>
+                <p className="text-zinc-400 font-bold text-xs uppercase tracking-widest mt-1">Orden #{receiptModal.orderId}</p>
+              </div>
+              <p className="text-zinc-500 text-sm font-bold">¿Deseas imprimir el recibo para el cliente?</p>
+            </div>
+            <div className="p-6 pt-0 flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  window.open(`/pos/print/receipt/${receiptModal.orderId}`, '_blank');
+                  setReceiptModal(null);
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-5 rounded-3xl flex items-center justify-center gap-3 uppercase tracking-widest text-xs shadow-xl shadow-emerald-600/20 transition-all active:scale-95"
+              >
+                <Printer size={18} /> Imprimir Recibo
+              </button>
+              <button
+                onClick={() => setReceiptModal(null)}
+                className="w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-500 font-black py-4 rounded-3xl uppercase tracking-widest text-xs transition-all"
+              >
+                Omitir
               </button>
             </div>
           </div>

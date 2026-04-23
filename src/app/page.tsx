@@ -132,7 +132,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 font-sans selection:bg-orange-600/10">
-      <div className="flex flex-col flex-1 max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10 gap-6 md:gap-8">
+      <div className={`transition-opacity duration-300 flex flex-col flex-1 max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-10 gap-6 md:gap-8 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
         
         {/* Header */}
         <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">

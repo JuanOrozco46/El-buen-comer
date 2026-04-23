@@ -10,9 +10,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        items: { include: { product: true } },
+        items: { include: { product: { include: { sizes: true } } } },
         table: true,
-        user: true
+        user: true,
+        payments: true
       }
     });
 
@@ -99,7 +100,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
       return tx.order.findUnique({
         where: { id: orderId },
-        include: { items: { include: { product: true } }, payments: true, table: true }
+        include: { items: { include: { product: { include: { sizes: true } } } }, payments: true, table: true }
       });
     });
 

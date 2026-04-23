@@ -36,7 +36,9 @@ export default function SettingsPage() {
   const [isPanicActive, setIsPanicActive] = useState(false);
 
   // New User Form State
-  const [newUser, setNewUser] = useState({ userName: "", name: "", role: "WAITER", password: "123" });
+  const [newUser, setNewUser] = useState({ userName: "", name: "", role: "WAITER", password: "" });
+  // User List State
+  const [users, setUsers] = useState<any[]>([]);
   // Expense Form State
   const [newExpense, setNewExpense] = useState({ amount: "", description: "", category: "Operativo" });
   // Expense History
@@ -78,10 +80,21 @@ export default function SettingsPage() {
       }
     };
 
+    const fetchUsers = async () => {
+      try {
+        const res = await fetch("/api/users");
+        const data = await res.json();
+        if (Array.isArray(data)) setUsers(data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
     if (status === "authenticated" && session.user.role === "ADMIN") {
       fetchSettings();
       fetchExpenses();
       fetchWaStatus();
+      fetchUsers();
     }
   }, [status, session, router]);
 
@@ -162,12 +175,46 @@ export default function SettingsPage() {
       });
       if (res.ok) {
         alert("¡Usuario creado con éxito!");
-        setNewUser({ userName: "", name: "", role: "WAITER", password: "123" });
+        setNewUser({ userName: "", name: "", role: "WAITER", password: "" });
+        
+        // Refresh users list
+        const fetchRes = await fetch("/api/users");
+        const data = await fetchRes.json();
+        if (Array.isArray(data)) setUsers(data);
       } else {
         const err = await res.json();
         alert(`Error: ${err.error}`);
       }
     } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteUser = async (id: number) => {
+    if (!confirm("¿Estás seguro de que deseas eliminar este usuario?")) return;
+    try {
+      const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setUsers(users.filter(u => u.id !== id));
+      } else {
+        alert("No se pudo eliminar el usuario");
+      }
+    } catch(err) { console.error(err); }
+  };
+
+  const handleUpdatePassword = async (id: number) => {
+    const newPassword = prompt("Ingresa la nueva contraseña para este usuario:");
+    if (!newPassword) return;
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: newPassword })
+      });
+      if (res.ok) {
+        alert("Contraseña actualizada exitosamente");
+      } else {
+        alert("Error al actualizar la contraseña");
+      }
+    } catch(err) { console.error(err); }
   };
 
   const handleCreateExpense = async (e: React.FormEvent) => {
@@ -301,6 +348,45 @@ export default function SettingsPage() {
                   Crear Cuenta de Usuario
                 </button>
               </form>
+
+              {/* Users List */}
+              <div className="mt-12 pt-12 border-t border-zinc-100">
+                <h4 className="text-xl font-black mb-6">Usuarios Registrados</h4>
+                <div className="space-y-3">
+                  {users.map(u => (
+                    <div key={u.id} className="flex items-center justify-between p-5 rounded-2xl bg-zinc-50 border border-zinc-100 hover:border-zinc-200 transition-all flex-wrap gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white text-zinc-900 rounded-xl flex items-center justify-center font-black text-sm border border-zinc-200 shadow-sm">
+                          {u.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-black text-sm text-zinc-900">{u.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">{u.role}</span>
+                            <span className="text-[9px] text-zinc-300">•</span>
+                            <span className="text-[9px] text-zinc-400">Login: {u.userName}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleUpdatePassword(u.id)}
+                          className="px-4 py-2 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+                        >
+                          Cambiar Clave
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteUser(u.id)}
+                          className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {users.length === 0 && <p className="text-xs text-zinc-400 font-bold">No hay usuarios (cargando...)</p>}
+                </div>
+              </div>
             </div>
           )}
 
