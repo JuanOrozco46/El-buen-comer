@@ -38,6 +38,10 @@ export default function POSPage() {
   // Receipt prompt modal
   const [receiptModal, setReceiptModal] = useState<{ orderId: number } | null>(null);
 
+  // Cash calculation modal state
+  const [cashModal, setCashModal] = useState<{ orderId: number; total: number } | null>(null);
+  const [cashPaidWith, setCashPaidWith] = useState("");
+
   // Effect 1: Panic Mode Polling
   useEffect(() => {
     const checkPanic = async () => {
@@ -242,6 +246,11 @@ export default function POSPage() {
     setSplitCash("");
     setSplitTransfer(total.toString());
     setSplitModal({ orderId, total });
+  };
+
+  const openCashModal = (orderId: number, total: number) => {
+    setCashPaidWith("");
+    setCashModal({ orderId, total });
   };
 
   const handleSplitPayment = async () => {
@@ -501,7 +510,7 @@ export default function POSPage() {
                       <p className="text-xl lg:text-2xl font-black text-orange-600 mb-4">${Number(order.total).toLocaleString()}</p>
 
                       <div className="grid grid-cols-3 gap-2 text-white font-black text-[10px] uppercase tracking-widest">
-                        <button onClick={() => markAsPaid(order.id, 'CASH')} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
+                        <button onClick={() => openCashModal(order.id, Number(order.total))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
                         <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
                         <button onClick={() => openSplitModal(order.id, Number(order.total))} className="bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir</button>
                       </div>
@@ -676,6 +685,64 @@ export default function POSPage() {
                 className="w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-500 font-black py-4 rounded-3xl uppercase tracking-widest text-xs transition-all"
               >
                 Omitir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash Payment Modal with Calculator */}
+      {cashModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-6 animate-in fade-in zoom-in-95">
+          <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-8 border-b border-zinc-100 flex justify-between items-center bg-emerald-50">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-emerald-500 text-white rounded-2xl">
+                  <Banknote size={24} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-zinc-900">Pago en Efectivo</h3>
+                  <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mt-1">Total: ${cashModal.total.toLocaleString()}</p>
+                </div>
+              </div>
+              <button onClick={() => setCashModal(null)} className="p-3 bg-white/50 rounded-2xl text-zinc-400 hover:text-zinc-600 transition-all">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-8">
+              <div className="space-y-4 text-center">
+                <label className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">¿Con cuánto pagan?</label>
+                <div className="relative">
+                  <span className="absolute left-6 top-1/2 -translate-y-1/2 text-3xl font-black text-zinc-300">$</span>
+                  <input
+                    autoFocus
+                    type="number"
+                    value={cashPaidWith}
+                    onChange={(e) => setCashPaidWith(e.target.value)}
+                    className="w-full bg-zinc-50 border-2 border-zinc-100 rounded-[30px] px-12 py-6 text-4xl font-black text-zinc-900 focus:border-emerald-500 focus:ring-0 outline-none transition-all text-center"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 rounded-[32px] p-8 text-center space-y-2 shadow-xl shadow-zinc-900/10">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Cambio / Vueltas</p>
+                <p className={`text-5xl font-black ${(parseFloat(cashPaidWith) || 0) >= cashModal.total ? "text-emerald-400" : "text-zinc-600"}`}>
+                  ${Math.max(0, (parseFloat(cashPaidWith) || 0) - cashModal.total).toLocaleString()}
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  markAsPaid(cashModal.orderId, 'CASH');
+                  setCashModal(null);
+                }}
+                disabled={(parseFloat(cashPaidWith) || 0) < cashModal.total}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-6 rounded-[30px] uppercase tracking-widest text-sm transition-all active:scale-95 disabled:opacity-30 flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/20"
+              >
+                Confirmar Pago y Cerrar
+                <CheckCircle2 size={20} />
               </button>
             </div>
           </div>

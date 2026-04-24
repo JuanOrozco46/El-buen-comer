@@ -11,7 +11,8 @@ import {
   Home,
   LogOut,
   MapPin,
-  Utensils
+  Utensils,
+  History
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useSession, signOut } from "next-auth/react";
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { icon: ChefHat, label: "Cocina", href: "/kitchen", roles: ["ADMIN", "CHEF"] },
   { icon: Package, label: "Inventario", href: "/admin/inventory", roles: ["ADMIN"] },
   { icon: Utensils, label: "Menú", href: "/admin/menu", roles: ["ADMIN"] },
+  { icon: History, label: "Historial", href: "/admin/history", roles: ["ADMIN"] },
   { icon: Settings, label: "Ajustes", href: "/admin/settings", roles: ["ADMIN"] },
 ];
 

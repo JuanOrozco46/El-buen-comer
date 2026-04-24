@@ -11,12 +11,24 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const statusFilter = searchParams.get("status");
     const limit = Number(searchParams.get("limit")) || 50;
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
 
     const where: any = {};
     if (statusFilter === "active") {
       where.status = { notIn: ["PAID", "CANCELLED"] };
     } else if (statusFilter) {
       where.status = statusFilter;
+    }
+
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from);
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        where.createdAt.lte = toDate;
+      }
     }
 
     const orders = await prisma.order.findMany({
