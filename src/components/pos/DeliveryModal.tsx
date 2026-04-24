@@ -58,8 +58,6 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
               <User className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
               <input
                 type="text"
-                required
-                autoFocus
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 pl-12 pr-4 font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
                 placeholder="Ej. Juan Pérez"
                 value={data.name}
@@ -88,7 +86,6 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
               <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
               <input
                 type="text"
-                required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 pl-12 pr-4 font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
                 placeholder="Ej. Calle 123 #45-67 apto 801"
                 value={data.address}
@@ -97,26 +94,42 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
             </div>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-3">
             <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Método de Pago</label>
-            <div className="relative">
-              <Receipt className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-              <select
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 pl-12 pr-4 font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all appearance-none"
-                value={data.method}
-                onChange={(e) => setData({ ...data, method: e.target.value })}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setData({ ...data, method: "EFECTIVO" })}
+                className={`py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border-2 ${
+                  data.method === "EFECTIVO" 
+                    ? "bg-orange-600 border-orange-600 text-white shadow-lg shadow-orange-600/20" 
+                    : "bg-zinc-50 border-zinc-100 text-zinc-400 hover:border-zinc-200"
+                }`}
               >
-                <option value="EFECTIVO">Efectivo</option>
-                <option value="NEQUI">Nequi / Transferencia</option>
-                <option value="TARJETA">Tarjeta</option>
-              </select>
+                Efectivo
+              </button>
+              <button
+                type="button"
+                onClick={() => setData({ ...data, method: "TRANSFERENCIA" })}
+                className={`py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border-2 ${
+                  data.method === "TRANSFERENCIA" 
+                    ? "bg-purple-600 border-purple-600 text-white shadow-lg shadow-purple-600/20" 
+                    : "bg-zinc-50 border-zinc-100 text-zinc-400 hover:border-zinc-200"
+                }`}
+              >
+                Transferencia
+              </button>
             </div>
           </div>
 
           <button
             type="submit"
-            className="w-full mt-6 py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-orange-600/20 active:scale-95 transition-all text-xs tracking-widest uppercase"
+            disabled={!data.name || !data.address}
+            className={`w-full mt-6 py-5 rounded-2xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all text-sm font-black uppercase tracking-widest ${
+              (!data.name || !data.address)
+                ? "bg-zinc-100 text-zinc-300 cursor-not-allowed shadow-none"
+                : "bg-orange-600 hover:bg-orange-500 text-white shadow-orange-600/20"
+            }`}
           >
             Continuar con el Pedido
           </button>
