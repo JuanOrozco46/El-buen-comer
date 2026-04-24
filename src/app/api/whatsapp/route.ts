@@ -111,6 +111,18 @@ export async function POST(req: Request) {
 
     console.log(`[WhatsApp Bot] Message from ${pushName} (${senderPhone}): "${messageText}"${base64Image ? " [Contains Image]" : ""}`);
 
+    // Hidden reset command for testing
+    if (messageText.trim().toLowerCase() === "reiniciar") {
+       try {
+           await (prisma as any).whatsAppChat.update({
+             where: { phone: senderPhone },
+             data: { history: [] }
+           });
+           await sendWhatsAppMessage(remoteJid, "🔄 Memoria borrada con éxito. Empecemos de cero, dime en qué te puedo ayudar.");
+       } catch(e) {}
+       return NextResponse.json({ received: true, status: "reset" });
+    }
+
     // 0. Check Panic Mode
     const settings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
     if (settings?.isPanicModeActive) {
