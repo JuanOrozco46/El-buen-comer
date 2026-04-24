@@ -59,9 +59,7 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
             delay: 500,
             presence: "composing",
           },
-          textMessage: {
-            text: message,
-          },
+          text: message,
         }),
       }
     );
