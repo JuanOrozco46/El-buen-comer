@@ -182,3 +182,10 @@ model Expense {
 
   @@index([createdAt])
 }
+
+model WhatsAppChat {
+  id        Int      @id @default(autoincrement())
+  phone     String   @unique
+  history   Json
+  updatedAt DateTime @updatedAt
+}

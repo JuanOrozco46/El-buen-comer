@@ -25,26 +25,20 @@ export async function GET(req: Request) {
   });
 }
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
 /**
  * POST /api/whatsapp
- * 
  * Webhook receiver for incoming WhatsApp messages from Evolution API.
- * 
- * Flow:
- *  1. Receive message from Evolution API
- *  2. Parse sender and message text
- *  3. If "menu" → respond with menu
- *  4. If a product name is matched → create an order and confirm
- *  5. Otherwise → send help message
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-
-    // Evolution API sends events in this shape
     const event = body.event;
 
-    // Handle connection updates (just log them)
     if (event === "connection.update") {
       const state = body.data?.state || "unknown";
       console.log(`[WhatsApp] Connection update: ${state}`);
@@ -55,9 +49,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
-    const messageData = body.data?.messages?.[0] || body.data; // Handle both array and object
+    const messageData = body.data?.messages?.[0] || body.data;
     if (!messageData || messageData.key?.fromMe) {
-      // Ignore outgoing messages
       return NextResponse.json({ received: true });
     }
 
@@ -66,7 +59,6 @@ export async function POST(req: Request) {
     const senderPhone = normalizarNumero(rawPhone);
     const pushName = messageData.pushName || "";
 
-    // Extract message text from various possible fields in v2.x
     const messageText = messageData.message?.conversation ||
       messageData.message?.extendedTextMessage?.text ||
       messageData.message?.imageMessage?.caption ||
@@ -76,140 +68,208 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
-    const normalizedText = messageText.toLowerCase().trim();
-    console.log(`[WhatsApp] Message from ${pushName} (${senderPhone}): "${messageText}"`);
+    console.log(`[WhatsApp Bot] Message from ${pushName} (${senderPhone}): "${messageText}"`);
 
-    // --- Command: "menu" or "hola" ---
-    if (normalizedText.includes("menu") || normalizedText.includes("menú") || normalizedText.includes("hola")) {
-      const products = await prisma.product.findMany({
-        where: { isActive: true, isSoldOut: false },
-        include: { sizes: true },
-      });
-
-      const menuMsg = formatMenuMessage(
-        products.map((p) => ({
-          name: p.name,
-          category: p.category,
-          sizes: p.sizes.map((s) => ({ name: s.name, price: Number(s.price) })),
-        }))
-      );
-
-      await sendWhatsAppMessage(remoteJid, menuMsg);
-      return NextResponse.json({ received: true, action: "sent_menu" });
-    }
-
-    // --- Try to match a product in message ---
-    // ... (logic remains same)
+    // 1. Load active menu
     const products = await prisma.product.findMany({
       where: { isActive: true, isSoldOut: false },
       include: { sizes: true },
     });
 
-    let matchedProduct = null;
-    let matchedSize = null;
+    const menuText = products.map((p) => 
+      `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')
+    ).join('\n\n');
 
-    for (const product of products) {
-      if (normalizedText.includes(product.name.toLowerCase())) {
-        matchedProduct = product;
-        for (const size of product.sizes) {
-          if (normalizedText.includes(size.name.toLowerCase())) {
-            matchedSize = size;
-            break;
-          }
-        }
-        // Default to first size if no size mentioned
-        if (!matchedSize) matchedSize = product.sizes[0];
-        break;
-      }
-    }
-
-    if (!matchedProduct || !matchedSize) {
-      // Didn't understand
-      await sendWhatsAppMessage(
-        remoteJid,
-        `Hola ${pushName}! 👋 No entendí tu pedido. Escribe *"menu"* para ver nuestra carta completa.\n\n` +
-        `_Si deseas pedir, escribe el nombre del plato y el tamaño._\n_Ej: "Arroz con Pollo Personal"_`
-      );
-      return NextResponse.json({ received: true, action: "sent_help" });
-    }
-
-    // Create the order in the system
-    // We first need a system user to associate the order with, or allow guest orders
-    const systemUser = await prisma.user.findFirst({ where: { role: "CASHIER" } });
-    if (!systemUser) {
-      await sendWhatsAppMessage(remoteJid, "En este momento no podemos procesar tu pedido. Por favor llámanos al local.");
-      return NextResponse.json({ received: true, action: "no_cashier_user" });
-    }
-
-    const order = await prisma.$transaction(async (tx) => {
-      const newOrder = await tx.order.create({
-        data: {
-          userId: systemUser.id,
-          customerName: pushName || `WA: ${senderPhone}`,
-          customerPhone: senderPhone,
-          source: "WHATSAPP",
-          status: "PENDING",
-          total: Number(matchedSize!.price),
-          items: {
-            create: [{
-              productId: matchedProduct!.id,
-              sizeName: matchedSize!.name,
-              quantity: 1,
-              price: matchedSize!.price,
-            }],
-          },
-        },
-        include: { items: { include: { product: true } } },
+    // 2. Load or create chat history
+    let chatRecord = await (prisma as any).whatsAppChat.findUnique({ where: { phone: senderPhone } });
+    let history: any[] = [];
+    if (chatRecord && chatRecord.history) {
+      history = chatRecord.history as any[];
+    } else {
+      chatRecord = await (prisma as any).whatsAppChat.create({
+        data: { phone: senderPhone, history: [] }
       });
+    }
 
-      // Automated Stock Deduction
-      const recipes = await tx.recipe.findMany({
-        where: {
-          productId: matchedProduct!.id,
-          sizeName: matchedSize!.name
-        }
-      });
+    // 3. Prepare Gemini Prompt
+    const systemInstruction = `Eres el asistente digital de "El buen comer". Estás atendiendo un cliente por WhatsApp. Eres amigable, directo y usas emojis moderadamente. No le digas tu nombre al cliente, solo di que eres el asistente del restaurante.
 
-      for (const recipe of recipes) {
-        const deduction = Number(recipe.quantity) * 1; // quantity is always 1 for WA single item orders currently
+INVENTARIO ACTUAL Y PRECIOS:
+${menuText}
 
-        await tx.ingredient.update({
-          where: { id: recipe.ingredientId },
-          data: {
-            stock: { decrement: deduction }
-          }
-        });
+REGLAS DE OPERACIÓN:
+- SOLO puedes ofrecer lo que está en el menú. Si piden algo que no está, diles amablemente que no lo tienes.
+- Cuando el cliente te indique qué quiere pedir, SIEMPRE pregúntale: el tamaño (si hay varios) y la cantidad. No asumas.
+- Tu objetivo es completar un pedido. Asegúrate de pedirle su Dirección de Entrega y preguntarle cómo va a pagar (Efectivo o Transferencia). Si no dice método de pago luego de pedir la dirección, asume "EFECTIVO".
+- Si te dice su nombre para la orden, úsalo, sino omítelo.
+- IMPORTANTE: Una vez que el cliente haya elegido sus productos, su tamaño, cantidad y te haya dado su dirección, es momento de confirmar el pedido y cerrarlo en el sistema.
 
-        await tx.inventoryLog.create({
-          data: {
-            ingredientId: recipe.ingredientId,
-            amount: deduction,
-            type: 'OUT',
-            reason: `WhatsApp Orden #${newOrder.id}`
-          }
-        });
+FORMATO DE SALIDA (ESTRICTO JSON):
+TU RESPUESTA SIEMPRE DEBE SER UN SÓLO OBJETO JSON VÁLIDO. NO ESCRIBAS TEXTO FUERA DEL JSON.
+ESTRUCTURA:
+{
+  "intent": "chat" | "order",
+  "replyText": "Tu respuesta amable y natural para enviar al cliente por WhatsApp (NUNCA VACÍO)",
+  "orderData": {    // SÓLO REQUERIDA si intent es "order", de lo contrario no la envíes
+    "customerName": "Nombre del cliente o null",
+    "customerAddress": "Dirección completa del cliente",
+    "notes": "Notas del pago, ej: EFECTIVO o TRANSFERENCIA",
+    "items": [
+      {
+        "productName": "Nombre exacto del producto según menú",
+        "sizeName": "Nombre exacto del tamaño según menú",
+        "quantity": 1
       }
+    ]
+  }
+}
 
-      return newOrder;
+Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICAMENTE cuando la orden esté completa (el cliente ya eligió productos, tamaños, cantidades y dio su dirección). Cuando uses "order", despídete cordialmente en replyText informando que su pedido va en camino.`;
+
+    // 4. Build chat context and run Gemini
+    const chatSession = model.startChat({
+      systemInstruction: systemInstruction,
+      generationConfig: {
+        responseMimeType: "application/json"
+      },
+      history: history.map(msg => ({
+        role: msg.role,
+        parts: [{ text: msg.text }]
+      }))
     });
 
-    const confirmMsg = formatOrderConfirmation(
-      order.id,
-      order.items.map((i: any) => ({
+    const result = await chatSession.sendMessage(messageText);
+    const responseText = result.response.text();
+    let geminiResponse: any = null;
 
-        productName: i.product.name,
-        quantity: i.quantity,
-        sizeName: i.sizeName,
-      })),
-      Number(order.total)
-    );
+    try {
+      // Remove any potential markdown json block formatting
+      const cleanJson = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      geminiResponse = JSON.parse(cleanJson);
+    } catch (e) {
+      console.error("[WhatsApp Bot] Gemini returned invalid JSON:", responseText);
+      await sendWhatsAppMessage(remoteJid, "Ups, estoy teniendo un problema técnico en mi sistema. Dame un momento y vuelve a escribirme. 😥");
+      return NextResponse.json({ received: true, error: "json_parse" });
+    }
 
-    await sendWhatsAppMessage(remoteJid, confirmMsg);
-    return NextResponse.json({ received: true, action: "order_created", orderId: order.id });
+    if (!geminiResponse || !geminiResponse.intent || !geminiResponse.replyText) {
+      return NextResponse.json({ received: true, error: "invalid_format" });
+    }
+
+    // 5. Save History
+    const newHistory = [
+      ...history,
+      { role: "user", text: messageText },
+      { role: "model", text: JSON.stringify(geminiResponse) }
+    ].slice(-10); // keep last 10 messages
+
+    await (prisma as any).whatsAppChat.update({
+      where: { phone: senderPhone },
+      data: { history: newHistory }
+    });
+
+    // 6. Send Response to User via WhatsApp
+    await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+
+    // 7. If intent is order, create the Prisma order and deduct inventory
+    if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items.length > 0) {
+      const systemUser = await prisma.user.findFirst({ where: { role: "ADMIN" } }) || await prisma.user.findFirst({ where: { role: "CASHIER" } });
+      if (!systemUser) {
+         console.error("[WhatsApp] No ADMIN or CASHIER user found to assign order");
+         return NextResponse.json({ received: true, error: "no_system_user" });
+      }
+
+      console.log(`[WhatsApp Bot] Creating order for ${senderPhone}...`);
+      
+      const orderData = geminiResponse.orderData;
+      let orderTotal = 0;
+      
+      // Match items strictly with DB to get IDs and prices
+      const validItems: { productId: number; sizeName: string; quantity: number; price: number }[] = [];
+      for (const reqItem of orderData.items) {
+         const dbProduct = products.find(p => p.name.toLowerCase() === reqItem.productName.toLowerCase());
+         if (dbProduct) {
+            const dbSize = dbProduct.sizes.find(s => s.name.toLowerCase() === reqItem.sizeName.toLowerCase()) || dbProduct.sizes[0];
+            const price = Number(dbSize.price);
+            orderTotal += price * reqItem.quantity;
+            validItems.push({
+               productId: dbProduct.id,
+               sizeName: dbSize.name,
+               quantity: reqItem.quantity,
+               price: price
+            });
+         }
+      }
+
+      if (validItems.length > 0) {
+         const order = await prisma.$transaction(async (tx) => {
+           const newOrder = await tx.order.create({
+             data: {
+               userId: systemUser.id,
+               customerName: orderData.customerName || pushName || `WA: ${senderPhone}`,
+               customerPhone: senderPhone,
+               customerAddress: orderData.customerAddress || null,
+               notes: orderData.notes || null,
+               source: "DELIVERY", // WhatsApp Bot orders are Delivery now by default
+               status: "PENDING",
+               total: orderTotal,
+               items: {
+                 create: validItems.map(vi => ({
+                   productId: vi.productId,
+                   sizeName: vi.sizeName,
+                   quantity: vi.quantity,
+                   price: vi.price,
+                 })),
+               },
+             } as any,
+             include: { items: { include: { product: true } } },
+           });
+     
+           // Automated Stock Deduction
+           for (const item of validItems) {
+             const recipes = await tx.recipe.findMany({
+               where: {
+                 productId: item.productId,
+                 sizeName: item.sizeName
+               }
+             });
+     
+             for (const recipe of recipes) {
+               const deduction = Number(recipe.quantity) * Number(item.quantity);
+               await tx.ingredient.update({
+                 where: { id: recipe.ingredientId },
+                 data: { stock: { decrement: deduction } }
+               });
+               await tx.inventoryLog.create({
+                 data: {
+                   ingredientId: recipe.ingredientId,
+                   amount: deduction,
+                   type: 'OUT',
+                   reason: `WhatsApp Bot Orden #${newOrder.id}`
+                 }
+               });
+             }
+           }
+     
+           return newOrder;
+         });
+         
+         // Clear chat history after successful order so they can start fresh next time
+         await (prisma as any).whatsAppChat.update({
+            where: { phone: senderPhone },
+            data: { history: [] }
+         });
+         
+         console.log(`[WhatsApp Bot] Order #${order.id} generated completely.`);
+      } else {
+         console.error("[WhatsApp Bot] Failed to match any items from the JSON payload:", orderData.items);
+      }
+    }
+
+    return NextResponse.json({ received: true, status: "processed" });
 
   } catch (error: any) {
-    console.error("[WhatsApp Webhook] Error:", error);
-    // Always return 200 to prevent Evolution API from retrying
+    console.error("[WhatsApp Webhook] General Error:", error);
     return NextResponse.json({ received: true, error: error.message });
   }
 }

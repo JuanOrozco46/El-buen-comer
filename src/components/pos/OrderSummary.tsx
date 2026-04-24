@@ -28,8 +28,11 @@ export const OrderSummary = ({
   isEditing
 }: OrderSummaryProps) => {
   const [editingNotes, setEditingNotes] = useState<string | null>(null); // e.g., "prodId-sizeId"
+  const [paidWith, setPaidWith] = useState<string>("");
   const subtotal = items.reduce((sum, item) => sum + (item.size.price * item.quantity), 0);
   const total = subtotal;
+  
+  const change = paidWith ? (Number(paidWith) - total) : 0;
 
   const handleAction = (method: string) => {
     if (isPanicActive) {
@@ -62,6 +65,11 @@ export const OrderSummary = ({
                 <MapPin size={10} /> Mesa {selectedTable.number}
               </p>
             )}
+            {isDelivery && (
+              <p className="flex items-center gap-1 text-[10px] text-orange-400 font-black uppercase tracking-widest mt-1">
+                <ShoppingBag size={10} /> DOMICILIO
+              </p>
+            )}
           </div>
         </div>
         <button
@@ -88,7 +96,7 @@ export const OrderSummary = ({
         ) : (
           items.map((item) => {
             const itemKey = `${item.product.id}-${item.size.id}`;
-            const isEditing = editingNotes === itemKey;
+            const isEditingItem = editingNotes === itemKey;
 
             return (
               <div key={itemKey} className="flex flex-col gap-3 group">
@@ -109,13 +117,13 @@ export const OrderSummary = ({
                 </div>
 
                 {/* Notes Section */}
-                {item.notes && !isEditing && (
+                {item.notes && !isEditingItem && (
                   <p className="text-[11px] text-orange-300 italic bg-orange-600/10 p-2 rounded-lg border border-orange-600/20">
-                    "{item.notes}"
+                    &quot;{item.notes}&quot;
                   </p>
                 )}
 
-                {isEditing ? (
+                {isEditingItem ? (
                   <div className="animate-in fade-in slide-in-from-top-2">
                     <input
                       autoFocus
@@ -151,6 +159,31 @@ export const OrderSummary = ({
       </div>
 
       <div className="space-y-4 border-t border-zinc-800 pt-6">
+        {/* Cash Calculator (Only for Cashier/Admin) */}
+        {role !== 'WAITER' && items.length > 0 && (
+          <div className="grid grid-cols-2 gap-4 pb-2 border-b border-zinc-800/50 mb-2">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Paga con</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">$</span>
+                <input
+                  type="number"
+                  value={paidWith}
+                  onChange={(e) => setPaidWith(e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-xl py-2 pl-7 pr-3 text-sm font-black text-white focus:ring-1 focus:ring-orange-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Cambio</label>
+              <div className={`p-2 rounded-xl text-lg font-black flex items-center justify-center bg-zinc-800/50 border border-zinc-800 transition-colors ${change > 0 ? "text-green-400" : change < 0 ? "text-red-400" : "text-zinc-500"}`}>
+                ${change > 0 ? change.toLocaleString() : "0"}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-between text-2xl font-black text-white pt-2">
           <span>Total</span>
           <span className="text-orange-500">${total.toLocaleString()}</span>
