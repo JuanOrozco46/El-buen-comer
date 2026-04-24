@@ -279,12 +279,11 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
                 headers: { "Content-Type": "application/json", "apikey": apiKey },
                 body: JSON.stringify({
                    number: remoteJid,
-                   options: { delay: 500, presence: "composing" },
-                   mediaMessage: {
-                      mediatype: "image",
-                      caption: geminiResponse.replyText,
-                      media: "https://i.postimg.cc/yxk0bz65/Whats-App-Image-2026-04-24-at-3-05-45-PM.jpg"
-                   }
+                   mediatype: "image",
+                   media: "https://i.postimg.cc/yxk0bz65/Whats-App-Image-2026-04-24-at-3-05-45-PM.jpg",
+                   caption: geminiResponse.replyText,
+                   delay: 500,
+                   presence: "composing"
                 })
              });
           } catch(e) { console.error("[WhatsApp] Error sending menu media", e); }
