@@ -66,11 +66,57 @@ export async function POST(req: Request) {
       messageData.message?.imageMessage?.caption ||
       messageData.message?.videoMessage?.caption || "";
 
-    if (!remoteJid || !messageText) {
+    const messageType = messageData.messageType || Object.keys(messageData.message || {})[0];
+    let base64Image: string | null = null;
+    let mimeType: string = "image/jpeg";
+
+    if (messageType === "imageMessage" || messageData.message?.imageMessage) {
+      const apiUrl = process.env.EVOLUTION_API_URL;
+      const apiKey = process.env.EVOLUTION_API_KEY;
+      const instanceName = process.env.EVOLUTION_INSTANCE_NAME;
+
+      if (apiUrl && apiKey && instanceName && messageData.key?.id) {
+        try {
+          const response = await fetch(`${apiUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": apiKey
+            },
+            body: JSON.stringify({
+              message: {
+                key: messageData.key,
+                message: messageData.message
+              }
+            })
+          });
+          const data = await response.json();
+          if (data && typeof data.base64 === "string") {
+             let rawBase64 = data.base64;
+             const mimeMatch = rawBase64.match(/^data:(image\/\w+);base64,/);
+             if (mimeMatch) {
+                mimeType = mimeMatch[1];
+             }
+             base64Image = rawBase64.replace(/^data:image\/\w+;base64,/, "");
+          }
+        } catch (e) {
+             console.error("[WhatsApp Bot] Error fetching base64 for image:", e);
+        }
+      }
+    }
+
+    if (!remoteJid || (!messageText && !base64Image)) {
       return NextResponse.json({ received: true });
     }
 
-    console.log(`[WhatsApp Bot] Message from ${pushName} (${senderPhone}): "${messageText}"`);
+    console.log(`[WhatsApp Bot] Message from ${pushName} (${senderPhone}): "${messageText}"${base64Image ? " [Contains Image]" : ""}`);
+
+    // 0. Check Panic Mode
+    const settings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
+    if (settings?.isPanicModeActive) {
+      await sendWhatsAppMessage(remoteJid, "Actualmente tenemos muchos pedidos en cola. Te avisaremos apenas podamos tomar más pedidos. Gracias por tu comprensión. 🙏");
+      return NextResponse.json({ received: true, status: "panic_mode_active" });
+    }
 
     // 1. Load active menu
     const products = await prisma.product.findMany({
@@ -114,19 +160,22 @@ CAPACIDAD POR TAMAÑO:
 - Super familiar: Para 6 o 7 personas.
 
 REGLAS DE OPERACIÓN:
+- Tus respuestas deben ser EXAGERADAMENTE CORTAS y directas. No uses saludos largos ni formalismos. Ve directo al grano.
 - SOLO puedes ofrecer lo que está en el menú. Si piden algo que no está, diles amablemente que no lo tienes.
 - Cuando el cliente te indique qué quiere pedir, SIEMPRE pregúntale: el tamaño (si hay varios) y la cantidad. No asumas.
 - Tu objetivo es completar un pedido. Asegúrate de pedirle su BARRIO (para el costo de envío) y Dirección de Entrega. Pregúntale cómo va a pagar (Efectivo o Transferencia).
+- Si el cliente elige pagar con Transferencia, coméntale los medios de pago: Nequi al 3173941189, y para otros bancos a la llave @nequilui57354. Pídele que envíe una foto o captura del comprobante por este medio. Confirmarás el pago cuando envíen la foto.
 - SIEMPRE informa al cliente el costo del domicilio según su barrio antes de cerrar el pedido.
 - Si te dice su nombre para la orden, úsalo, sino omítelo.
 - IMPORTANTE: Una vez que el cliente haya elegido sus productos, su tamaño, cantidad, te haya dado su dirección y barrio, es momento de confirmar el pedido y cerrarlo en el sistema.
+- 🚨 OMITIDO: Si el cliente pide ver el menú, la carta o dice hola por primera vez, usa el intent "send_menu".
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 TU RESPUESTA SIEMPRE DEBE SER UN SÓLO OBJETO JSON VÁLIDO. NO ESCRIBAS TEXTO FUERA DEL JSON.
 ESTRUCTURA:
 {
-  "intent": "chat" | "order",
-  "replyText": "Tu respuesta amable y natural para enviar al cliente por WhatsApp (NUNCA VACÍO)",
+  "intent": "chat" | "order" | "send_menu",
+  "replyText": "Tu respuesta amable y exageradamente corta para el cliente",
   "orderData": {    // SÓLO REQUERIDA si intent es "order", de lo contrario no la envíes
     "customerName": "Nombre del cliente o null",
     "customerAddress": "Dirección completa (incluyendo barrio)",
@@ -159,7 +208,20 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
       }))
     });
 
-    const result = await chatSession.sendMessage(messageText);
+    const messageParts: any[] = [];
+    if (messageText) messageParts.push({ text: messageText });
+    if (!messageText && base64Image) messageParts.push({ text: "El usuario ha enviado una imagen del comprobante de transferencia." });
+    
+    if (base64Image) {
+      messageParts.push({
+        inlineData: {
+          mimeType: mimeType,
+          data: base64Image
+        }
+      });
+    }
+
+    const result = await chatSession.sendMessage(messageParts);
     const responseText = result.response.text();
     let geminiResponse: any = null;
 
@@ -178,9 +240,10 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
     }
 
     // 5. Save History
+    const historyUserText = messageText + (base64Image ? " [Imagen de comprobante adjunta]" : "");
     const newHistory = [
       ...history,
-      { role: "user", text: messageText },
+      { role: "user", text: historyUserText },
       { role: "model", text: JSON.stringify(geminiResponse) }
     ].slice(-10); // keep last 10 messages
 
@@ -190,7 +253,32 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
     });
 
     // 6. Send Response to User via WhatsApp
-    await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+    if (geminiResponse.intent === "send_menu") {
+       const apiUrl = process.env.EVOLUTION_API_URL;
+       const apiKey = process.env.EVOLUTION_API_KEY;
+       const instanceName = process.env.EVOLUTION_INSTANCE_NAME;
+       if (apiUrl && apiKey && instanceName) {
+          try {
+             await fetch(`${apiUrl}/message/sendMedia/${instanceName}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "apikey": apiKey },
+                body: JSON.stringify({
+                   number: remoteJid,
+                   options: { delay: 500, presence: "composing" },
+                   mediaMessage: {
+                      mediatype: "image",
+                      caption: geminiResponse.replyText,
+                      media: "https://i.postimg.cc/yxk0bz65/Whats-App-Image-2026-04-24-at-3-05-45-PM.jpg"
+                   }
+                })
+             });
+          } catch(e) { console.error("[WhatsApp] Error sending menu media", e); }
+       } else {
+          await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+       }
+    } else {
+       await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+    }
 
     // 7. If intent is order, create the Prisma order and deduct inventory
     if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items.length > 0) {

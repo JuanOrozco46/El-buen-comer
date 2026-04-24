@@ -29,6 +29,9 @@ export function AutoPrintListener() {
               // Small delay to ensure browser handles the window.open correctly
               setTimeout(() => {
                 window.open(`/pos/print/kitchen/${o.id}`, "_blank");
+                if (o.source === 'DELIVERY') {
+                  setTimeout(() => window.open(`/pos/print/receipt/${o.id}`, "_blank"), 500);
+                }
               }, 300);
             }
           });
