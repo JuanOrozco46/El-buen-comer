@@ -28,7 +28,7 @@ export async function GET(req: Request) {
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 /**
  * POST /api/whatsapp
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
       include: { sizes: true },
     });
 
-    const menuText = products.map((p) => 
+    const menuText = products.map((p) =>
       `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')
     ).join('\n\n');
 
@@ -146,9 +146,9 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
 
     // 4. Build chat context and run Gemini
     const chatSession = model.startChat({
-      systemInstruction: { 
+      systemInstruction: {
         role: "system",
-        parts: [{ text: systemInstruction }] 
+        parts: [{ text: systemInstruction }]
       },
       generationConfig: {
         responseMimeType: "application/json"
@@ -196,96 +196,96 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
     if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items.length > 0) {
       const systemUser = await prisma.user.findFirst({ where: { role: "ADMIN" } }) || await prisma.user.findFirst({ where: { role: "CASHIER" } });
       if (!systemUser) {
-         console.error("[WhatsApp] No ADMIN or CASHIER user found to assign order");
-         return NextResponse.json({ received: true, error: "no_system_user" });
+        console.error("[WhatsApp] No ADMIN or CASHIER user found to assign order");
+        return NextResponse.json({ received: true, error: "no_system_user" });
       }
 
       console.log(`[WhatsApp Bot] Creating order for ${senderPhone}...`);
-      
+
       const orderData = geminiResponse.orderData;
       const deliveryFee = Number(orderData.deliveryFee) || 0;
       let orderTotal = deliveryFee;
-      
+
       // Match items strictly with DB to get IDs and prices
       const validItems: { productId: number; sizeName: string; quantity: number; price: number }[] = [];
       for (const reqItem of orderData.items) {
-         const dbProduct = products.find(p => p.name.toLowerCase() === reqItem.productName.toLowerCase());
-         if (dbProduct) {
-            const dbSize = dbProduct.sizes.find(s => s.name.toLowerCase() === reqItem.sizeName.toLowerCase()) || dbProduct.sizes[0];
-            const price = Number(dbSize.price);
-            orderTotal += price * reqItem.quantity;
-            validItems.push({
-               productId: dbProduct.id,
-               sizeName: dbSize.name,
-               quantity: reqItem.quantity,
-               price: price
-            });
-         }
+        const dbProduct = products.find(p => p.name.toLowerCase() === reqItem.productName.toLowerCase());
+        if (dbProduct) {
+          const dbSize = dbProduct.sizes.find(s => s.name.toLowerCase() === reqItem.sizeName.toLowerCase()) || dbProduct.sizes[0];
+          const price = Number(dbSize.price);
+          orderTotal += price * reqItem.quantity;
+          validItems.push({
+            productId: dbProduct.id,
+            sizeName: dbSize.name,
+            quantity: reqItem.quantity,
+            price: price
+          });
+        }
       }
 
       if (validItems.length > 0) {
-         const order = await prisma.$transaction(async (tx) => {
-           const newOrder = await tx.order.create({
-             data: {
-               userId: systemUser.id,
-               customerName: orderData.customerName || pushName || `WA: ${senderPhone}`,
-               customerPhone: senderPhone,
-               customerAddress: orderData.customerAddress || null,
-               notes: orderData.notes || null,
-               source: "DELIVERY", 
-               status: "PENDING",
-               total: orderTotal,
-               deliveryFee: deliveryFee,
-               items: {
-                 create: validItems.map(vi => ({
-                   productId: vi.productId,
-                   sizeName: vi.sizeName,
-                   quantity: vi.quantity,
-                   price: vi.price,
-                 })),
-               },
-             } as any,
-             include: { items: { include: { product: true } } },
-           });
-     
-           // Automated Stock Deduction
-           for (const item of validItems) {
-             const recipes = await tx.recipe.findMany({
-               where: {
-                 productId: item.productId,
-                 sizeName: item.sizeName
-               }
-             });
-     
-             for (const recipe of recipes) {
-               const deduction = Number(recipe.quantity) * Number(item.quantity);
-               await tx.ingredient.update({
-                 where: { id: recipe.ingredientId },
-                 data: { stock: { decrement: deduction } }
-               });
-               await tx.inventoryLog.create({
-                 data: {
-                   ingredientId: recipe.ingredientId,
-                   amount: deduction,
-                   type: 'OUT',
-                   reason: `WhatsApp Bot Orden #${newOrder.id}`
-                 }
-               });
-             }
-           }
-     
-           return newOrder;
-         });
-         
-         // Clear chat history after successful order so they can start fresh next time
-         await (prisma as any).whatsAppChat.update({
-            where: { phone: senderPhone },
-            data: { history: [] }
-         });
-         
-         console.log(`[WhatsApp Bot] Order #${order.id} generated completely.`);
+        const order = await prisma.$transaction(async (tx) => {
+          const newOrder = await tx.order.create({
+            data: {
+              userId: systemUser.id,
+              customerName: orderData.customerName || pushName || `WA: ${senderPhone}`,
+              customerPhone: senderPhone,
+              customerAddress: orderData.customerAddress || null,
+              notes: orderData.notes || null,
+              source: "DELIVERY",
+              status: "PENDING",
+              total: orderTotal,
+              deliveryFee: deliveryFee,
+              items: {
+                create: validItems.map(vi => ({
+                  productId: vi.productId,
+                  sizeName: vi.sizeName,
+                  quantity: vi.quantity,
+                  price: vi.price,
+                })),
+              },
+            } as any,
+            include: { items: { include: { product: true } } },
+          });
+
+          // Automated Stock Deduction
+          for (const item of validItems) {
+            const recipes = await tx.recipe.findMany({
+              where: {
+                productId: item.productId,
+                sizeName: item.sizeName
+              }
+            });
+
+            for (const recipe of recipes) {
+              const deduction = Number(recipe.quantity) * Number(item.quantity);
+              await tx.ingredient.update({
+                where: { id: recipe.ingredientId },
+                data: { stock: { decrement: deduction } }
+              });
+              await tx.inventoryLog.create({
+                data: {
+                  ingredientId: recipe.ingredientId,
+                  amount: deduction,
+                  type: 'OUT',
+                  reason: `WhatsApp Bot Orden #${newOrder.id}`
+                }
+              });
+            }
+          }
+
+          return newOrder;
+        });
+
+        // Clear chat history after successful order so they can start fresh next time
+        await (prisma as any).whatsAppChat.update({
+          where: { phone: senderPhone },
+          data: { history: [] }
+        });
+
+        console.log(`[WhatsApp Bot] Order #${order.id} generated completely.`);
       } else {
-         console.error("[WhatsApp Bot] Failed to match any items from the JSON payload:", orderData.items);
+        console.error("[WhatsApp Bot] Failed to match any items from the JSON payload:", orderData.items);
       }
     }
 
