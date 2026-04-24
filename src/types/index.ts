@@ -56,6 +56,9 @@ export interface Payment {
 export interface FullOrder {
   id: number;
   customerName?: string | null;
+  customerPhone?: string | null;
+  customerAddress?: string | null;
+  notes?: string | null;
   tableId?: number | null;
   table?: { number: string } | null;
   source: OrderSource;

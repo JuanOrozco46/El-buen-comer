@@ -79,25 +79,16 @@ export default function CustomerReceiptPage() {
             padding: 0 !important;
             background: white !important;
           }
-          /* Hide everything except the print area */
-          body > *:not(#print-area), 
-          header, 
-          nav, 
-          aside, 
-          footer,
-          .print\:hidden {
+          /* Hide specific structural elements to avoid overriding generic wrappers */
+          header, nav, aside, footer, .print\:hidden {
             display: none !important;
           }
           #print-area {
             display: block !important;
-            visibility: visible !important;
             width: 58mm;
             padding: 2mm;
             background: white;
-            margin: 0;
-            position: absolute;
-            left: 0;
-            top: 0;
+            margin: 0 auto;
             color: #000 !important;
             -webkit-font-smoothing: none !important;
             -moz-osx-font-smoothing: unset !important;
@@ -177,10 +168,20 @@ export default function CustomerReceiptPage() {
               <span>FECHA:</span>
               <span className="text-right">{dateStr}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-start">
               <span>MESA/REF:</span>
-              <span className="font-black truncate max-w-[120px]">{order.table?.number || order.customerName || "GENERAL"}</span>
+              <span className="font-black text-right max-w-[120px] uppercase">
+                {order.source === 'DELIVERY' ? 'DOMICILIO' : (order.table?.number || order.customerName || "GENERAL")}
+              </span>
             </div>
+            {(order.source === 'DELIVERY' || order.customerAddress) && (
+              <div className="border border-black p-1 space-y-1 mt-2">
+                {order.customerName && <div className="flex justify-between"><span>CLI:</span><span className="font-black text-right">{order.customerName}</span></div>}
+                {order.customerPhone && <div className="flex justify-between"><span>TEL:</span><span className="font-black text-right">{order.customerPhone}</span></div>}
+                {order.customerAddress && <div className="flex flex-col"><span className="underline">DIR:</span><span className="font-black text-right break-words">{order.customerAddress}</span></div>}
+                {order.notes && <div className="flex flex-col"><span className="underline">NOTA:</span><span className="font-black text-right break-words">{order.notes}</span></div>}
+              </div>
+            )}
           </div>
 
           <div className="border-t-2 border-black border-dashed my-4" />

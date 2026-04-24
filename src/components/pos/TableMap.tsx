@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { Table } from "../../types";
-import { Loader2, Users } from "lucide-react";
+import { Loader2, Users, Truck } from "lucide-react";
 
 interface Props {
   onSelect: (table: Table) => void;
+  onSelectDelivery?: () => void;
   selectedTableId?: number;
 }
 
-export function TableMap({ onSelect, selectedTableId }: Props) {
+export function TableMap({ onSelect, onSelectDelivery, selectedTableId }: Props) {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,6 +40,20 @@ export function TableMap({ onSelect, selectedTableId }: Props) {
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 p-4 md:p-6">
+      {/* Botón Permanente de Domicilios */}
+      {onSelectDelivery && (
+        <button
+          onClick={onSelectDelivery}
+          className="aspect-square rounded-[32px] p-4 flex flex-col items-center justify-center gap-2 transition-all duration-300 border-2 bg-orange-600 border-orange-600 text-white shadow-xl shadow-orange-600/30 hover:scale-105"
+        >
+          <div className="p-3 rounded-2xl bg-white/20">
+            <Truck size={24} />
+          </div>
+          <span className="text-xl font-black mt-1">DOMICILIO</span>
+          <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Nuevo Envío</span>
+        </button>
+      )}
+
       {tables.map(table => {
         const hasOrder = table.orders && table.orders.length > 0;
         const activeOrderId = hasOrder ? table.orders![0].id : null;

@@ -77,25 +77,16 @@ export default function KitchenPrintTicket() {
             padding: 0 !important;
             background: white !important;
           }
-          /* Hide everything except the print area */
-          body > *:not(#print-area), 
-          header, 
-          nav, 
-          aside, 
-          footer,
-          .print\:hidden {
+          /* Hide specific structural elements to avoid overriding generic wrappers */
+          header, nav, aside, footer, .print\:hidden {
             display: none !important;
           }
           #print-area {
             display: block !important;
-            visibility: visible !important;
             width: 58mm;
             padding: 2mm;
             background: white;
-            margin: 0;
-            position: absolute;
-            left: 0;
-            top: 0;
+            margin: 0 auto;
             color: #000 !important;
             -webkit-font-smoothing: none !important;
             -moz-osx-font-smoothing: unset !important;
@@ -168,9 +159,21 @@ export default function KitchenPrintTicket() {
           <div className="text-center mb-4 border-b-8 border-black pb-4">
             <h2 className="font-black text-[24px] uppercase mb-1">COMANDA COCINA</h2>
             <div className="border-8 border-black p-2 my-2">
-              <p className="font-black text-[42px] leading-none">
-                MESA {order.table?.number || "S/N"}
-              </p>
+              {order.source === 'DELIVERY' || order.customerAddress ? (
+                <div className="flex flex-col items-center">
+                  <p className="font-black text-[42px] leading-none">DOMICILIO</p>
+                  <div className="w-full text-left font-black text-[14px] border-t-4 border-black pt-2 mt-2 break-all space-y-1">
+                    {order.customerName && <p>CLI: {order.customerName}</p>}
+                    {order.customerPhone && <p>TEL: {order.customerPhone}</p>}
+                    {order.customerAddress && <p>DIR: {order.customerAddress}</p>}
+                    {order.notes && <p className="uppercase">{order.notes}</p>}
+                  </div>
+                </div>
+              ) : (
+                <p className="font-black text-[42px] leading-none text-center">
+                  MESA {order.table?.number || "S/N"}
+                </p>
+              )}
             </div>
             <p className="mt-2 font-black text-[20px]">ORDEN #{order.id}</p>
           </div>

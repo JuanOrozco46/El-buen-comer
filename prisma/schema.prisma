@@ -85,6 +85,8 @@ model Order {
   tableId        Int?
   customerName   String?
   customerPhone  String?
+  customerAddress String?
+  notes          String?  @db.Text
   source         OrderSource @default(POS)
   status         OrderStatus @default(PENDING) // Disappears from kitchen ONLY when PAID
   total          Decimal     @db.Decimal(10, 2)

@@ -6,6 +6,7 @@ import { Product, ProductSize, CartItem, OrderSource, FullOrder, Table } from ".
 import { ProductCard } from "../../components/pos/ProductCard";
 import { OrderSummary } from "../../components/pos/OrderSummary";
 import { TableMap } from "../../components/pos/TableMap";
+import { DeliveryModal } from "../../components/pos/DeliveryModal";
 import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, ChevronLeft, CheckCircle2 } from "lucide-react";
 
 export default function POSPage() {
@@ -29,6 +30,10 @@ export default function POSPage() {
   const [splitModal, setSplitModal] = useState<{ orderId: number; total: number } | null>(null);
   const [splitCash, setSplitCash] = useState("");
   const [splitTransfer, setSplitTransfer] = useState("");
+
+  // Delivery state
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [deliveryData, setDeliveryData] = useState<{name: string, phone: string, address: string, method: string} | null>(null);
 
   // Receipt prompt modal
   const [receiptModal, setReceiptModal] = useState<{ orderId: number } | null>(null);
@@ -114,6 +119,7 @@ export default function POSPage() {
   const clearCart = () => {
     setCart([]);
     setSelectedTable(null);
+    setDeliveryData(null);
     setEditOrderId(null);
     setViewStep('TABLE');
   };
@@ -128,14 +134,18 @@ export default function POSPage() {
 
   const placeOrder = async (actionMethod: string) => {
     try {
-      if (!selectedTable) return alert("Selecciona una mesa");
+      if (!selectedTable && !deliveryData) return alert("Selecciona una mesa o un domicilio");
       if (cart.length === 0) return alert("Agrega al menos un producto al pedido");
 
       const subtotal = cart.reduce((s, i) => s + (i.size.price * i.quantity), 0);
 
       const orderData = {
-        source: OrderSource.POS,
-        tableId: selectedTable.id,
+        source: deliveryData ? OrderSource.DELIVERY : OrderSource.POS,
+        tableId: selectedTable ? selectedTable.id : null,
+        customerName: deliveryData?.name || null,
+        customerPhone: deliveryData?.phone || null,
+        customerAddress: deliveryData?.address || null,
+        notes: deliveryData ? `Método de pago: ${deliveryData.method}` : null,
         total: subtotal,
         status: actionMethod === 'PENDING' ? 'PENDING' : 'COMPLETED',
         payments: actionMethod === 'PENDING' ? [] : [{ method: actionMethod, amount: subtotal }],
@@ -361,7 +371,7 @@ export default function POSPage() {
         {/* Dynamic Content Area */}
         {viewMode === 'NEW' ? (
           viewStep === 'TABLE' ? (
-            <section className="flex-1 overflow-y-auto bg-zinc-50/50 animate-in fade-in">
+            <section className="flex-1 overflow-y-auto bg-zinc-50 animate-in fade-in">
               <TableMap 
                 selectedTableId={selectedTable?.id}
                 onSelect={(table) => {
@@ -370,15 +380,28 @@ export default function POSPage() {
                     startEditingOrder(table.orders![0].id, table);
                   } else {
                     setSelectedTable(table);
+                    setDeliveryData(null);
                     setViewStep('PRODUCTS');
                   }
                 }}
+                onSelectDelivery={() => setShowDeliveryModal(true)}
               />
+              {showDeliveryModal && (
+                <DeliveryModal 
+                  onCancel={() => setShowDeliveryModal(false)}
+                  onConfirm={(data) => {
+                    setDeliveryData(data);
+                    setSelectedTable(null);
+                    setShowDeliveryModal(false);
+                    setViewStep('PRODUCTS');
+                  }}
+                />
+              )}
             </section>
           ) : (
             <section className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-8 bg-zinc-50/50 animate-in fade-in">
               <div className="flex gap-2 lg:gap-3 overflow-x-auto pb-2 no-scrollbar">
-                {categories.map(cat => (
+                {['Todos', ...Array.from(new Set(products.map(p => p.category)))].map(cat => (
                   <button
                     key={cat}
                     onClick={() => setActiveCategory(cat)}

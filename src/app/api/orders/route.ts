@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { customerName, customerPhone, source, status, total, deliveryFee, items, tableId } = body;
+    const { customerName, customerPhone, customerAddress, notes, source, status, total, deliveryFee, items, tableId } = body;
     const userId = session.user.id;
 
     // Use transaction for order creation and inventory deduction
@@ -60,8 +60,10 @@ export async function POST(req: Request) {
           tableId: tableId ? Number(tableId) : null,
           customerName: customerName || null,
           customerPhone: customerPhone || null,
-          source: source || "POS",
-          status: status || "PENDING",
+          customerAddress: customerAddress || null,
+          notes: notes || null,
+          source: (source as any) || "POS",
+          status: (status as any) || "PENDING",
           total: Number(total),
           deliveryFee: deliveryFee ? Number(deliveryFee) : null,
           items: {
@@ -79,7 +81,7 @@ export async function POST(req: Request) {
               amount: Number(p.amount)
             }))
           } : undefined,
-        },
+        } as any,
         include: { items: true, payments: true }
       });
 
