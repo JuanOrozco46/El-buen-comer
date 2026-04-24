@@ -187,7 +187,7 @@ export default function SalesHistoryPage() {
                     </td>
                     <td className="px-6 py-5">
                        <div className="flex justify-center flex-wrap gap-1">
-                          {order.payments.length > 0 ? (
+                          {order.payments && order.payments.length > 0 ? (
                             order.payments.map((p: any, idx) => {
                                const Icon = methodIcons[p.method] || Banknote;
                                return (
