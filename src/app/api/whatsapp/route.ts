@@ -97,12 +97,27 @@ export async function POST(req: Request) {
 INVENTARIO ACTUAL Y PRECIOS:
 ${menuText}
 
+PRECIOS DE DOMICILIO POR BARRIO:
+- Rockefeller, Modelo, Maeugenia, Bellavista, Loma del Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio: $3.000
+- Cristal, Oriente, Transformadora, Galeón, Miraflores, Masamorra, San Luis, Kennedy, El 5: $4.000
+- Marina, R9, Laureles, Inmaculada, Ciudadela 1 y 2: $5.000
+- Ciudadela 3 y 4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Todo Isla: $6.000
+- Éxito, Triunfo, Nueva Grana, Brisas Del Mar: $7.000
+- Colinas C.: $8.000
+
+CAPACIDAD POR TAMAÑO:
+- Personal: Para 1 persona.
+- Duo: Para 2 o 3 personas.
+- Familiar: Para 4 o 5 personas.
+- Super familiar: Para 6 o 7 personas.
+
 REGLAS DE OPERACIÓN:
 - SOLO puedes ofrecer lo que está en el menú. Si piden algo que no está, diles amablemente que no lo tienes.
 - Cuando el cliente te indique qué quiere pedir, SIEMPRE pregúntale: el tamaño (si hay varios) y la cantidad. No asumas.
-- Tu objetivo es completar un pedido. Asegúrate de pedirle su Dirección de Entrega y preguntarle cómo va a pagar (Efectivo o Transferencia). Si no dice método de pago luego de pedir la dirección, asume "EFECTIVO".
+- Tu objetivo es completar un pedido. Asegúrate de pedirle su BARRIO (para el costo de envío) y Dirección de Entrega. Pregúntale cómo va a pagar (Efectivo o Transferencia).
+- SIEMPRE informa al cliente el costo del domicilio según su barrio antes de cerrar el pedido.
 - Si te dice su nombre para la orden, úsalo, sino omítelo.
-- IMPORTANTE: Una vez que el cliente haya elegido sus productos, su tamaño, cantidad y te haya dado su dirección, es momento de confirmar el pedido y cerrarlo en el sistema.
+- IMPORTANTE: Una vez que el cliente haya elegido sus productos, su tamaño, cantidad, te haya dado su dirección y barrio, es momento de confirmar el pedido y cerrarlo en el sistema.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 TU RESPUESTA SIEMPRE DEBE SER UN SÓLO OBJETO JSON VÁLIDO. NO ESCRIBAS TEXTO FUERA DEL JSON.
@@ -112,7 +127,8 @@ ESTRUCTURA:
   "replyText": "Tu respuesta amable y natural para enviar al cliente por WhatsApp (NUNCA VACÍO)",
   "orderData": {    // SÓLO REQUERIDA si intent es "order", de lo contrario no la envíes
     "customerName": "Nombre del cliente o null",
-    "customerAddress": "Dirección completa del cliente",
+    "customerAddress": "Dirección completa (incluyendo barrio)",
+    "deliveryFee": 3000, // Número exacto del costo de envío según barrio
     "notes": "Notas del pago, ej: EFECTIVO o TRANSFERENCIA",
     "items": [
       {
@@ -124,7 +140,7 @@ ESTRUCTURA:
   }
 }
 
-Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICAMENTE cuando la orden esté completa (el cliente ya eligió productos, tamaños, cantidades y dio su dirección). Cuando uses "order", despídete cordialmente en replyText informando que su pedido va en camino.`;
+Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICAMENTE cuando la orden esté completa (el cliente ya eligió productos, tamaños, cantidades, dio su dirección y aceptó el total con domicilio). Cuando uses "order", despídete cordialmente en replyText informando que su pedido va en camino y el total a pagar (productos + domicilio).`;
 
     // 4. Build chat context and run Gemini
     const chatSession = model.startChat({
@@ -182,7 +198,8 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
       console.log(`[WhatsApp Bot] Creating order for ${senderPhone}...`);
       
       const orderData = geminiResponse.orderData;
-      let orderTotal = 0;
+      const deliveryFee = Number(orderData.deliveryFee) || 0;
+      let orderTotal = deliveryFee;
       
       // Match items strictly with DB to get IDs and prices
       const validItems: { productId: number; sizeName: string; quantity: number; price: number }[] = [];
@@ -210,9 +227,10 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
                customerPhone: senderPhone,
                customerAddress: orderData.customerAddress || null,
                notes: orderData.notes || null,
-               source: "DELIVERY", // WhatsApp Bot orders are Delivery now by default
+               source: "DELIVERY", 
                status: "PENDING",
                total: orderTotal,
+               deliveryFee: deliveryFee,
                items: {
                  create: validItems.map(vi => ({
                    productId: vi.productId,
