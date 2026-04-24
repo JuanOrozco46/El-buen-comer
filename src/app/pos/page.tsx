@@ -36,7 +36,7 @@ export default function POSPage() {
   const [deliveryData, setDeliveryData] = useState<{name: string, phone: string, address: string, method: string} | null>(null);
 
   // Receipt prompt modal
-  const [receiptModal, setReceiptModal] = useState<{ orderId: number } | null>(null);
+  const [receiptModal, setReceiptModal] = useState<{ orderId: number; paidWith?: string; change?: string } | null>(null);
 
   // Cash calculation modal state
   const [cashModal, setCashModal] = useState<{ orderId: number; total: number } | null>(null);
@@ -232,7 +232,9 @@ export default function POSPage() {
       });
       if (res.ok) {
         setPendingOrders(prev => prev.filter(o => o.id !== orderId));
-        setReceiptModal({ orderId });
+        const paid = cashModal ? cashPaidWith : undefined;
+        const veltas = cashModal ? Math.max(0, (parseFloat(cashPaidWith) || 0) - cashModal.total).toString() : undefined;
+        setReceiptModal({ orderId, paidWith: paid, change: veltas });
       } else {
         const err = await res.json().catch(() => ({}));
         alert(`Error al procesar pago: ${err.error || 'Intenta de nuevo.'}`);
@@ -673,7 +675,9 @@ export default function POSPage() {
             <div className="p-6 pt-0 flex flex-col gap-3">
               <button
                 onClick={() => {
-                  window.open(`/pos/print/receipt/${receiptModal.orderId}`, '_blank');
+                  const url = `/pos/print/receipt/${receiptModal.orderId}` + 
+                    (receiptModal.paidWith ? `?paidWith=${receiptModal.paidWith}&change=${receiptModal.change}` : "");
+                  window.open(url, '_blank');
                   setReceiptModal(null);
                 }}
                 className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-5 rounded-3xl flex items-center justify-center gap-3 uppercase tracking-widest text-xs shadow-xl shadow-emerald-600/20 transition-all active:scale-95"
@@ -717,10 +721,14 @@ export default function POSPage() {
                   <span className="absolute left-6 top-1/2 -translate-y-1/2 text-3xl font-black text-zinc-300">$</span>
                   <input
                     autoFocus
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={cashPaidWith}
-                    onChange={(e) => setCashPaidWith(e.target.value)}
-                    className="w-full bg-zinc-50 border-2 border-zinc-100 rounded-[30px] px-12 py-6 text-4xl font-black text-zinc-900 focus:border-emerald-500 focus:ring-0 outline-none transition-all text-center"
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      setCashPaidWith(val);
+                    }}
+                    className="w-full bg-zinc-50 border-2 border-zinc-100 rounded-[30px] px-16 py-6 text-4xl font-black text-zinc-900 focus:border-emerald-500 focus:ring-0 outline-none transition-all text-center"
                     placeholder="0"
                   />
                 </div>

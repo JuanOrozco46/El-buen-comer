@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Printer, CheckCircle2 } from "lucide-react";
 
 export default function CustomerReceiptPage() {
   const { id } = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +63,9 @@ export default function CustomerReceiptPage() {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit"
   });
+
+  const paidWith = searchParams.get("paidWith");
+  const change = searchParams.get("change");
 
   const isPaid = order.status === "PAID";
 
@@ -215,6 +219,18 @@ export default function CustomerReceiptPage() {
                       <span>${Number(p.amount).toLocaleString()}</span>
                    </div>
                  ))}
+                 {paidWith && (
+                   <div className="flex justify-between text-[11px] font-bold pt-2 border-t border-black border-dotted mt-2">
+                      <span>RECIBIDO:</span>
+                      <span>${Number(paidWith).toLocaleString()}</span>
+                   </div>
+                 )}
+                 {change && (
+                   <div className="flex justify-between text-[13px] font-black">
+                      <span>CAMBIO:</span>
+                      <span>${Number(change).toLocaleString()}</span>
+                   </div>
+                 )}
               </div>
             )}
           </div>
