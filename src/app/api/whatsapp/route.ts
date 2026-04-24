@@ -154,7 +154,7 @@ export async function POST(req: Request) {
     // 3. Prepare Gemini Prompt
     const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
     const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en la Calle 6 # 39A-06 Entrada Barrio Rockefeller, Buenaventura.
-La fecha y hora actual es: ${currentDate}. Estás atendiendo un cliente por WhatsApp. No uses saludos largos. No le digas tu nombre al cliente, solo di que eres el asistente del restaurante.
+La fecha y hora actual es: ${currentDate}. Estás atendiendo un cliente por WhatsApp. No uses saludos largos. ERES UN ROBOT MUY RÁPIDO Y CORTANTE. No le digas tu nombre al cliente, solo di que eres el asistente del restaurante.
 
 INVENTARIO ACTUAL Y PRECIOS:
 ${menuText}
@@ -173,34 +173,40 @@ CAPACIDAD POR TAMAÑO:
 - Familiar: Para 4 o 5 personas.
 - Super familiar: Para 6 o 7 personas.
 
-REGLAS DE OPERACIÓN:
-- Tus respuestas deben ser EXAGERADAMENTE CORTAS y directas. No uses saludos largos ni formalismos. Ve directo al grano.
-- SOLO puedes ofrecer lo que está en el menú. Si piden algo que no está, diles amablemente que no lo tienes.
-- Cuando el cliente te indique qué quiere pedir, SIEMPRE pregúntale: el tamaño (si hay varios) y la cantidad. No asumas.
-- Tu objetivo es completar un pedido. Asegúrate de pedirle su BARRIO (para el costo de envío). En Buenaventura la gente suele dar solo el barrio como ubicación, así que NO le pidas ni le exijas una dirección exacta; con el barrio y/o alguna referencia es más que suficiente. Pregúntale cómo va a pagar (Efectivo o Transferencia).
-- Si el cliente elige pagar con Transferencia, coméntale los medios de pago: Nequi al 3173941189, y para otros bancos a la llave @nequilui57354. Pídele que envíe una foto o captura del comprobante por este medio. Confirmarás el pago cuando envíen la foto.
-- Si recibes una imagen de un comprobante de pago, USA TU VISIÓN para analizarla. Verifica estrictamente: (1) Que la fecha corresponda a HOY (${currentDate}). (2) Que el valor coincida EXACTAMENTE con el total del pedido. (3) Que el destinatario sea Nequi 3173941189 o la llave @nequilui57354. Si hay algún error (fecha vieja, monto incorrecto, otro destinatario), informa amablemente el problema; si todo es correcto, aprueba el pago verbalmente.
-- SIEMPRE informa al cliente el costo del domicilio según su barrio antes de cerrar el pedido.
-- Si te dice su nombre para la orden, úsalo, sino omítelo.
-- IMPORTANTE: Una vez que el cliente haya elegido sus productos, su tamaño, cantidad, y te haya dicho su barrio o ubicación, es momento de confirmar el pedido y cerrarlo en el sistema.
-- 🚨 OMITIDO: Si el cliente pide ver el menú, la carta o dice hola por primera vez, usa el intent "send_menu".
+REGLAS DE OPERACIÓN (SIGUELAS ESTRICTAMENTE):
+- DEBES RESPONDER SIEMPRE CON UN MÁXIMO DE 5 A 15 PALABRAS. Evita párrafos. Ve al grano, usa oraciones súper cortas. (Ejemplo: "¡Listo! ¿Qué tamaño y cantidad deseas?").
+- Si piden que le quiten o agreguen algo especial a un plato (ej. "sin cebolla", "bien asado"), SIEMPRE regístralo textualmente en la propiedad "notes" del item en el JSON.
+- SOLO puedes ofrecer lo que está en el menú. Si piden algo que no está, diles "No lo tenemos disponible".
+- Tu objetivo es completar un pedido. ANTES de usar el intent "order", DEBES tener obligatoriamente esta información del cliente:
+    1. Productos con sus tamaños, cantidades y notas especiales.
+    2. Nombre de la persona que recibe.
+    3. Barrio de entrega. (NO le pidas ni exijas una dirección exacta, en Buenaventura la gente suele dar solo el barrio o una referencia. Con eso es suficiente).
+    4. Medio de pago (Efectivo o Transferencia).
+- El número de celular ya lo tienes, así que no se lo preguntes a menos de que te pidan entregarlo a otra persona.
+- Si el cliente elige pagar con Transferencia, coméntale: Nequi al 3173941189 o a la llave @nequilui57354. Pídele que envíe una foto del comprobante.
+- Si recibes una imagen de un comprobante de pago, USA TU VISIÓN para analizarla. Verifica estrictamente: (1) Que la fecha corresponda a HOY (${currentDate}). (2) Que el valor coincida EXACTAMENTE con el total del pedido. (3) Que el destinatario sea Nequi 3173941189 o la llave @nequilui57354. Si hay algún error, informa el problema cortamente; si todo es correcto, confirma el pago.
+- SIEMPRE infórmale el costo exacto del domicilio según su barrio y el valor TOTAL antes de cerrar el pedido.
+- IMPORTANTE: Solo usa el intent "order" cuando LA ORDEN ESTÉ COMPLETA (ya tengas productos, nombre, barrio y pago). Cuando uses "order", despídete con un mensaje ultracorto "Tu pedido va en camino. Total a pagar: $XXX".
+- 🚨 Si el cliente pide ver el menú, la carta o dice hola por primera vez, usa el intent "send_menu" y responde "Aquí tienes nuestro menú 👇".
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 TU RESPUESTA SIEMPRE DEBE SER UN SÓLO OBJETO JSON VÁLIDO. NO ESCRIBAS TEXTO FUERA DEL JSON.
 ESTRUCTURA:
 {
   "intent": "chat" | "order" | "send_menu",
-  "replyText": "Tu respuesta amable y exageradamente corta para el cliente",
+  "replyText": "Respuesta cortante y muy breve en texto plano",
   "orderData": {    // SÓLO REQUERIDA si intent es "order", de lo contrario no la envíes
-    "customerName": "Nombre del cliente o null",
-    "customerAddress": "Dirección completa (incluyendo barrio)",
-    "deliveryFee": 3000, // Número exacto del costo de envío según barrio
+    "customerName": "Nombre obligatorio del cliente",
+    "customerAddress": "Nombre del barrio y/o referencias que dio",
+    "customerPhone": "Solo si te da un celular diferente al que le estás escribiendo",
+    "deliveryFee": 3000, // Costo de envío según la tabla de barrios
     "notes": "Notas del pago, ej: EFECTIVO o TRANSFERENCIA",
     "items": [
       {
         "productName": "Nombre exacto del producto según menú",
         "sizeName": "Nombre exacto del tamaño según menú",
-        "quantity": 1
+        "quantity": 1,
+        "notes": "Cualquier indicación u observación sobre el plato (ej: sin cebolla). Pon null si no hay notas."
       }
     ]
   }
@@ -279,11 +285,12 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
                 headers: { "Content-Type": "application/json", "apikey": apiKey },
                 body: JSON.stringify({
                    number: remoteJid,
-                   mediatype: "image",
-                   media: "https://i.postimg.cc/yxk0bz65/Whats-App-Image-2026-04-24-at-3-05-45-PM.jpg",
-                   caption: geminiResponse.replyText,
-                   delay: 500,
-                   presence: "composing"
+                   options: { delay: 500, presence: "composing" },
+                   mediaMessage: {
+                      mediatype: "image",
+                      caption: geminiResponse.replyText,
+                      media: "https://i.postimg.cc/yxk0bz65/Whats-App-Image-2026-04-24-at-3-05-45-PM.jpg"
+                   }
                 })
              });
           } catch(e) { console.error("[WhatsApp] Error sending menu media", e); }
@@ -309,7 +316,7 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
       let orderTotal = deliveryFee;
 
       // Match items strictly with DB to get IDs and prices
-      const validItems: { productId: number; sizeName: string; quantity: number; price: number }[] = [];
+      const validItems: { productId: number; sizeName: string; quantity: number; price: number; notes: string | null }[] = [];
       for (const reqItem of orderData.items) {
         const dbProduct = products.find(p => p.name.toLowerCase() === reqItem.productName.toLowerCase());
         if (dbProduct) {
@@ -320,7 +327,8 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
             productId: dbProduct.id,
             sizeName: dbSize.name,
             quantity: reqItem.quantity,
-            price: price
+            price: price,
+            notes: reqItem.notes || null
           });
         }
       }
@@ -331,7 +339,7 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
             data: {
               userId: systemUser.id,
               customerName: orderData.customerName || pushName || `WA: ${senderPhone}`,
-              customerPhone: senderPhone,
+              customerPhone: orderData.customerPhone || senderPhone,
               customerAddress: orderData.customerAddress || null,
               notes: orderData.notes || null,
               source: "DELIVERY",
@@ -344,6 +352,7 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
                   sizeName: vi.sizeName,
                   quantity: vi.quantity,
                   price: vi.price,
+                  notes: vi.notes,
                 })),
               },
             } as any,

@@ -55,9 +55,11 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
         },
         body: JSON.stringify({
           number: to,
+          options: {
+            delay: 500,
+            presence: "composing",
+          },
           text: message,
-          delay: 500,
-          presence: "composing",
         }),
       }
     );
