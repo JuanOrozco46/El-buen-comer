@@ -28,7 +28,7 @@ export async function GET(req: Request) {
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 /**
  * POST /api/whatsapp
@@ -146,7 +146,10 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
 
     // 4. Build chat context and run Gemini
     const chatSession = model.startChat({
-      systemInstruction: systemInstruction,
+      systemInstruction: { 
+        role: "system",
+        parts: [{ text: systemInstruction }] 
+      },
       generationConfig: {
         responseMimeType: "application/json"
       },
