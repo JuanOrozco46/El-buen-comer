@@ -45,6 +45,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true, connectionState: state });
     }
 
+    console.log(`[WhatsApp Bot] Full event body:`, JSON.stringify(body, null, 2));
+
     if (event !== "messages.upsert") {
       return NextResponse.json({ received: true });
     }
