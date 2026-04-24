@@ -551,6 +551,7 @@ export default function POSPage() {
                 onUpdateNotes={updateCartItemNotes}
                 onClearCart={clearCart}
                 onPlaceOrder={placeOrder}
+                isDelivery={!!deliveryData}
                 isEditing={!!editOrderId}
               />
             </div>

@@ -11,6 +11,7 @@ interface OrderSummaryProps {
   onUpdateNotes: (productId: number, sizeId: number, notes: string) => void;
   onClearCart: () => void;
   onPlaceOrder: (paymentType: string) => void;
+  isDelivery?: boolean,
   isEditing?: boolean;
 }
 
@@ -23,6 +24,7 @@ export const OrderSummary = ({
   onUpdateNotes, 
   onClearCart, 
   onPlaceOrder,
+  isDelivery,
   isEditing
 }: OrderSummaryProps) => {
   const [editingNotes, setEditingNotes] = useState<string | null>(null); // e.g., "prodId-sizeId"
@@ -34,7 +36,7 @@ export const OrderSummary = ({
       alert("⚠️ MODO PÁNICO ACTIVO: La cocina está saturada. No se pueden procesar nuevos pedidos.");
       return;
     }
-    if (!selectedTable) {
+    if (!selectedTable && !isDelivery) {
       alert("Por favor selecciona una mesa primero.");
       return;
     }
@@ -165,7 +167,9 @@ export const OrderSummary = ({
               {isPanicActive ? "Saturado" : (isEditing ? "Actualizar Pedido" : "Enviar a Cocina")}
             </span>
           </div>
-          <span className="text-[10px] opacity-70 font-bold tracking-[0.2em]">Mesa {selectedTable?.number || "?"}</span>
+          <span className="text-[10px] opacity-70 font-bold tracking-[0.2em]">
+            {isDelivery ? "DOMICILIO" : `Mesa ${selectedTable?.number || "?"}`}
+          </span>
         </button>
       </div>
     </div>
