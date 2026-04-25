@@ -171,6 +171,14 @@ export default function KitchenPrintTicket() {
                     {order.customerPhone && <p>TEL: {order.customerPhone.startsWith('57') && order.customerPhone.length > 10 ? order.customerPhone.substring(2) : order.customerPhone}</p>}
                     {order.customerAddress && <p>DIR: {order.customerAddress}</p>}
                     {order.notes && <p className="uppercase">{order.notes}</p>}
+                    
+                    {/* Financial Summary for Kitchen (Delivery/Cash specific request) */}
+                    {(order.source === 'DELIVERY' || order.source === 'WHATSAPP') && order.notes?.toUpperCase().includes('EFECTIVO') && (
+                      <div className="mt-2 border-t border-black pt-1 space-y-1">
+                        <p className="text-[16px] font-black">DOMICILIO: ${Number(order.deliveryFee || 0).toLocaleString()}</p>
+                        <p className="text-[18px] font-black bg-black text-white px-1">TOTAL A COBRAR: ${Number(Number(order.total) + Number(order.deliveryFee || 0)).toLocaleString()}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (

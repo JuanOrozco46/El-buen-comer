@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { X, Truck, User, Phone, MapPin, Receipt } from "lucide-react";
+import { X, Truck, User, Phone, MapPin, Receipt, DollarSign } from "lucide-react";
 
 interface DeliveryData {
   name: string;
   phone: string;
   address: string;
   method: string;
+  fee: number;
 }
 
 interface Props {
@@ -21,6 +22,7 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
     phone: "",
     address: "",
     method: "EFECTIVO", // Default
+    fee: 3000, // Default fee
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -119,6 +121,20 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
               >
                 Transferencia
               </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Valor Domicilio ($)</label>
+            <div className="relative">
+              <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+              <input
+                type="number"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 pl-12 pr-4 font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                placeholder="Ej. 3000"
+                value={data.fee}
+                onChange={(e) => setData({ ...data, fee: Number(e.target.value) })}
+              />
             </div>
           </div>
 

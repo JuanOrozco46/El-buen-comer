@@ -206,9 +206,21 @@ export default function CustomerReceiptPage() {
           </div>
 
           <div className="border-t-2 border-black border-dashed pt-4 space-y-2">
-            <div className="flex justify-between text-[18px] font-black">
-              <span>TOTAL:</span>
-              <span>${Number(order.total).toLocaleString()}</span>
+            {Number(order.deliveryFee || 0) > 0 && (
+              <>
+                <div className="flex justify-between text-[12px] font-bold">
+                  <span>PRODUCTOS:</span>
+                  <span>${Number(order.total).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-[12px] font-bold border-b border-black border-dotted pb-1">
+                  <span>DOMICILIO:</span>
+                  <span>${Number(order.deliveryFee).toLocaleString()}</span>
+                </div>
+              </>
+            )}
+            <div className="flex justify-between text-[18px] font-black pt-1">
+              <span>TOTAL A PAGAR:</span>
+              <span>${(Number(order.total) + Number(order.deliveryFee || 0)).toLocaleString()}</span>
             </div>
             
             {isPaid && order.payments && order.payments.length > 0 && (

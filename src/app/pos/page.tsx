@@ -33,7 +33,7 @@ export default function POSPage() {
   const [splitTransfer, setSplitTransfer] = useState("");
 
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
-  const [deliveryData, setDeliveryData] = useState<{name: string, phone: string, address: string, method: string} | null>(null);
+  const [deliveryData, setDeliveryData] = useState<{name: string, phone: string, address: string, method: string, fee: number} | null>(null);
 
   // Takeaway state
   const [showTakeawayModal, setShowTakeawayModal] = useState(false);
@@ -147,6 +147,9 @@ export default function POSPage() {
       if (cart.length === 0) return alert("Agrega al menos un producto al pedido");
 
       const subtotal = cart.reduce((s, i) => s + (i.size.price * i.quantity), 0);
+      const deliveryFee = deliveryData?.fee || 0;
+      // Real total for the restaurant is just subtotal
+      const total = subtotal;
 
       const orderData = {
         source: takeawayData ? OrderSource.TAKEAWAY : (deliveryData ? OrderSource.DELIVERY : OrderSource.POS),
@@ -155,7 +158,8 @@ export default function POSPage() {
         customerPhone: takeawayData?.phone || deliveryData?.phone || null,
         customerAddress: deliveryData?.address || null,
         notes: deliveryData ? `Método de pago: ${deliveryData.method}` : null,
-        total: subtotal,
+        total: total,
+        deliveryFee: deliveryFee,
         status: actionMethod === 'PENDING' ? 'PENDING' : 'COMPLETED',
         payments: actionMethod === 'PENDING' ? [] : [{ method: actionMethod, amount: subtotal }],
         items: cart.map(item => ({
