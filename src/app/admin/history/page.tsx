@@ -118,6 +118,24 @@ export default function SalesHistoryPage() {
                 <p className="text-2xl font-black">${orders.reduce((s,o) => s + Number(o.total), 0).toLocaleString()}</p>
               </div>
            </div>
+           <div className="bg-emerald-50 p-5 rounded-3xl border border-emerald-100 flex items-center gap-4">
+              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-emerald-700 shadow-sm">
+                <Banknote size={24} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">En Efectivo</p>
+                <p className="text-2xl font-black text-emerald-700">${orders.reduce((s,o) => s + (o.payments?.reduce((ps, p) => p.method === 'CASH' ? ps + Number(p.amount) : ps, 0) || 0), 0).toLocaleString()}</p>
+              </div>
+           </div>
+           <div className="bg-purple-50 p-5 rounded-3xl border border-purple-100 flex items-center gap-4">
+              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-purple-700 shadow-sm">
+                <Smartphone size={24} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">En Transferencia</p>
+                <p className="text-2xl font-black text-purple-700">${orders.reduce((s,o) => s + (o.payments?.reduce((ps, p) => p.method === 'TRANSFER' ? ps + Number(p.amount) : ps, 0) || 0), 0).toLocaleString()}</p>
+              </div>
+           </div>
         </div>
       )}
 

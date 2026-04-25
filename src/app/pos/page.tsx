@@ -157,7 +157,9 @@ export default function POSPage() {
         customerName: takeawayData?.name || deliveryData?.name || null,
         customerPhone: takeawayData?.phone || deliveryData?.phone || null,
         customerAddress: deliveryData?.address || null,
-        notes: deliveryData ? `Método de pago: ${deliveryData.method}` : null,
+        notes: (deliveryData || takeawayData) ? 
+          `Método de pago: ${((deliveryData || takeawayData) as any).method}${(deliveryData || takeawayData as any).method === 'DIVIDIR' ? ` (EFEC: ${(deliveryData || takeawayData as any).splitCash}, TRANS: ${(deliveryData || takeawayData as any).splitTransfer})` : ''}` 
+          : null,
         total: total,
         deliveryFee: deliveryFee,
         status: actionMethod === 'PENDING' ? 'PENDING' : 'COMPLETED',
@@ -292,6 +294,29 @@ export default function POSPage() {
       } else {
         const err = await res.json().catch(() => ({}));
         alert(`Error: ${err.error || 'No se pudo procesar el pago dividido.'}`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAutomatedSplitPayment = async (orderId: number, cash: number, trans: number) => {
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "PAID",
+          paymentMethod: "MIXED",
+          splitPayments: [
+            ...(cash > 0 ? [{ method: "CASH", amount: cash }] : []),
+            ...(trans > 0 ? [{ method: "TRANSFER", amount: trans }] : []),
+          ]
+        })
+      });
+      if (res.ok) {
+        setPendingOrders(prev => prev.filter(o => o.id !== orderId));
+        setReceiptModal({ orderId });
       }
     } catch (err) {
       console.error(err);
@@ -547,7 +572,14 @@ export default function POSPage() {
                           <button
                             onClick={() => {
                               if (order.notes?.toUpperCase().includes('DIVIDIR')) {
-                                openSplitModal(order.id, Number(order.total));
+                                const cashMatch = order.notes.match(/EFEC:\s*(\d+(\.\d*)?)/i);
+                                const transMatch = order.notes.match(/TRANS:\s*(\d+(\.\d*)?)/i);
+                                
+                                if (cashMatch && transMatch) {
+                                  handleAutomatedSplitPayment(order.id, parseFloat(cashMatch[1]), parseFloat(transMatch[1]));
+                                } else {
+                                  openSplitModal(order.id, Number(order.total));
+                                }
                               } else {
                                 const method = order.notes?.toUpperCase().includes('TRANSFERENCIA') ? 'TRANSFER' : 'CASH';
                                 markAsPaid(order.id, method);

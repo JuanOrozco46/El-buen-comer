@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Truck, User, Phone, MapPin, Receipt, DollarSign } from "lucide-react";
+import { X, Truck, User, Phone, MapPin, DollarSign, Smartphone } from "lucide-react";
 
 interface DeliveryData {
   name: string;
@@ -9,6 +9,8 @@ interface DeliveryData {
   address: string;
   method: string;
   fee: number;
+  splitCash?: number;
+  splitTransfer?: number;
 }
 
 interface Props {
@@ -22,7 +24,9 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
     phone: "",
     address: "",
     method: "EFECTIVO", // Default
-    fee: 3000, // Default fee
+    fee: 0,
+    splitCash: 0,
+    splitTransfer: 0
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -134,6 +138,37 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
               </button>
             </div>
           </div>
+
+          {data.method === "DIVIDIR" && (
+            <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-200">
+               <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Monto Efectivo</label>
+                <div className="relative">
+                  <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600" size={16} />
+                  <input
+                    type="number"
+                    className="w-full bg-emerald-50 border border-emerald-100 rounded-2xl py-3 pl-10 pr-4 font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm"
+                    placeholder="Efectivo"
+                    value={data.splitCash || ''}
+                    onChange={(e) => setData({ ...data, splitCash: Number(e.target.value) })}
+                  />
+                </div>
+               </div>
+               <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Monto Transf.</label>
+                <div className="relative">
+                  <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-purple-600" size={16} />
+                  <input
+                    type="number"
+                    className="w-full bg-purple-50 border border-purple-100 rounded-2xl py-3 pl-10 pr-4 font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-sm"
+                    placeholder="Transferencia"
+                    value={data.splitTransfer || ''}
+                    onChange={(e) => setData({ ...data, splitTransfer: Number(e.target.value) })}
+                  />
+                </div>
+               </div>
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Valor Domicilio ($)</label>
