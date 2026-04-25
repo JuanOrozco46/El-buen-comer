@@ -518,7 +518,7 @@ export default function POSPage() {
                           <Printer size={16} />
                         </button>
                         <span className="px-2 py-1 bg-amber-100 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                          {order.source || 'POS'}
+                          {order.source === 'DELIVERY' ? 'DOMICILIO' : order.source === 'TAKEAWAY' ? 'PARA LLEVAR' : order.source || 'POS'}
                         </span>
                         <button
                           onClick={() => deleteOrder(order.id)}
@@ -542,10 +542,29 @@ export default function POSPage() {
                     <div className="border-t border-zinc-100 pt-4 mt-auto">
                       <p className="text-xl lg:text-2xl font-black text-orange-600 mb-4">${Number(order.total).toLocaleString()}</p>
 
-                      <div className="grid grid-cols-3 gap-2 text-white font-black text-[10px] uppercase tracking-widest">
-                        <button onClick={() => openCashModal(order.id, Number(order.total))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
-                        <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
-                        <button onClick={() => openSplitModal(order.id, Number(order.total))} className="bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir</button>
+                      <div className="grid grid-cols-2 gap-2 text-white font-black text-[10px] uppercase tracking-widest">
+                        {(order.source === 'DELIVERY' || order.source === 'TAKEAWAY' || order.source === 'WHATSAPP') ? (
+                          <button
+                            onClick={() => {
+                              if (order.notes?.toUpperCase().includes('DIVIDIR')) {
+                                openSplitModal(order.id, Number(order.total));
+                              } else {
+                                const method = order.notes?.toUpperCase().includes('TRANSFERENCIA') ? 'TRANSFER' : 'CASH';
+                                markAsPaid(order.id, method);
+                              }
+                            }}
+                            className="col-span-2 bg-orange-600 hover:bg-orange-500 p-4 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-3"
+                          >
+                            <CheckCircle2 size={18} />
+                            <span className="text-xs">PEDIDO DESPACHADO</span>
+                          </button>
+                        ) : (
+                          <>
+                            <button onClick={() => openCashModal(order.id, Number(order.total))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
+                            <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
+                            <button onClick={() => openSplitModal(order.id, Number(order.total))} className="col-span-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir Pago</button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>

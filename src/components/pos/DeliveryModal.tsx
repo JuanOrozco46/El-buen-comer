@@ -98,7 +98,7 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
 
           <div className="space-y-3">
             <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Método de Pago</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => setData({ ...data, method: "EFECTIVO" })}
@@ -110,7 +110,7 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
               >
                 Efectivo
               </button>
-              <button
+<button
                 type="button"
                 onClick={() => setData({ ...data, method: "TRANSFERENCIA" })}
                 className={`py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border-2 ${
@@ -120,6 +120,17 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
                 }`}
               >
                 Transferencia
+              </button>
+              <button
+                type="button"
+                onClick={() => setData({ ...data, method: "DIVIDIR" })}
+                className={`py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border-2 ${
+                  data.method === "DIVIDIR" 
+                    ? "bg-zinc-800 border-zinc-800 text-white shadow-lg shadow-zinc-800/20" 
+                    : "bg-zinc-50 border-zinc-100 text-zinc-400 hover:border-zinc-200"
+                }`}
+              >
+                Dividir
               </button>
             </div>
           </div>

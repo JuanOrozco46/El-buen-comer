@@ -81,7 +81,7 @@ export function TakeawayModal({ onCancel, onConfirm }: Props) {
 
           <div className="space-y-4">
             <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-2">Medio de Pago Estimado</label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-3">
               <button
                 type="button"
                 onClick={() => setData({ ...data, method: "EFECTIVO" })}
@@ -102,7 +102,18 @@ export function TakeawayModal({ onCancel, onConfirm }: Props) {
                     : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-200"
                 }`}
               >
-                Transferencia
+                Transf.
+              </button>
+              <button
+                type="button"
+                onClick={() => setData({ ...data, method: "DIVIDIR" })}
+                className={`py-5 rounded-[28px] font-black text-xs uppercase tracking-widest transition-all border-4 ${
+                  data.method === "DIVIDIR" 
+                    ? "bg-zinc-800 border-zinc-800 text-white shadow-xl shadow-zinc-800/20" 
+                    : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-200"
+                }`}
+              >
+                Dividir
               </button>
             </div>
           </div>
