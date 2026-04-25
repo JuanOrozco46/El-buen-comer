@@ -181,7 +181,7 @@ export default function CustomerReceiptPage() {
             {(order.source === 'DELIVERY' || order.customerAddress) && (
               <div className="border border-black p-1 space-y-1 mt-2">
                 {order.customerName && <div className="flex justify-between"><span>CLI:</span><span className="font-black text-right">{order.customerName}</span></div>}
-                {order.customerPhone && <div className="flex justify-between"><span>TEL:</span><span className="font-black text-right">{order.customerPhone}</span></div>}
+                {order.customerPhone && <div className="flex justify-between"><span>TEL:</span><span className="font-black text-right">{order.customerPhone.startsWith('57') && order.customerPhone.length > 10 ? order.customerPhone.substring(2) : order.customerPhone}</span></div>}
                 {order.customerAddress && <div className="flex flex-col"><span className="underline">DIR:</span><span className="font-black text-right break-words">{order.customerAddress}</span></div>}
                 {order.notes && <div className="flex flex-col"><span className="underline">NOTA:</span><span className="font-black text-right break-words">{order.notes}</span></div>}
               </div>

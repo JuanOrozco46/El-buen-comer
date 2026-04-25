@@ -166,7 +166,7 @@ export default function KitchenPrintTicket() {
                   </div>
                   <div className="w-full text-left font-black text-[13px] border-t-2 border-black pt-1 mt-1 break-inside-avoid space-y-1">
                     {order.customerName && <p>CLI: {order.customerName}</p>}
-                    {order.customerPhone && <p>TEL: {order.customerPhone}</p>}
+                    {order.customerPhone && <p>TEL: {order.customerPhone.startsWith('57') && order.customerPhone.length > 10 ? order.customerPhone.substring(2) : order.customerPhone}</p>}
                     {order.customerAddress && <p>DIR: {order.customerAddress}</p>}
                     {order.notes && <p className="uppercase">{order.notes}</p>}
                   </div>
