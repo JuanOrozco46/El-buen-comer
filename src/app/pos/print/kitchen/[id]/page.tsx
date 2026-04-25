@@ -215,12 +215,9 @@ export default function KitchenPrintTicket() {
                     {item.quantity}
                   </span>
                   <div className="flex flex-col flex-1">
-                    <div className="flex justify-between items-start">
-                      <span className="uppercase text-[20px] font-black leading-tight">
-                        {item.product.name}
-                      </span>
-                      <span className="text-[20px] font-black">${Number(item.price).toLocaleString()}</span>
-                    </div>
+                    <span className="uppercase text-[20px] font-black leading-tight">
+                      {item.product.name} - ${Number(item.price).toLocaleString()}
+                    </span>
                     <span className="text-[14px] font-black mt-1">
                       {item.sizeName}
                     </span>
