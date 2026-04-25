@@ -175,10 +175,10 @@ export default function CustomerReceiptPage() {
             <div className="flex justify-between items-start">
               <span>MESA/REF:</span>
               <span className="font-black text-right max-w-[120px] uppercase">
-                {order.source === 'DELIVERY' ? 'DOMICILIO' : (order.table?.number || order.customerName || "GENERAL")}
+                {order.source === 'DELIVERY' ? 'DOMICILIO' : (order.source === 'TAKEAWAY' ? 'PARA LLEVAR' : (order.table?.number || order.customerName || "GENERAL"))}
               </span>
             </div>
-            {(order.source === 'DELIVERY' || order.customerAddress) && (
+            {(order.source === 'DELIVERY' || order.source === 'TAKEAWAY' || order.customerAddress) && (
               <div className="border border-black p-1 space-y-1 mt-2">
                 {order.customerName && <div className="flex justify-between"><span>CLI:</span><span className="font-black text-right">{order.customerName}</span></div>}
                 {order.customerPhone && <div className="flex justify-between"><span>TEL:</span><span className="font-black text-right">{order.customerPhone.startsWith('57') && order.customerPhone.length > 10 ? order.customerPhone.substring(2) : order.customerPhone}</span></div>}

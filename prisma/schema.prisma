@@ -124,6 +124,7 @@ enum OrderSource {
   POS
   WHATSAPP
   DELIVERY
+  TAKEAWAY
 }
 
 enum OrderStatus {

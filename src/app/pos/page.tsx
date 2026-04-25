@@ -7,7 +7,8 @@ import { ProductCard } from "../../components/pos/ProductCard";
 import { OrderSummary } from "../../components/pos/OrderSummary";
 import { TableMap } from "../../components/pos/TableMap";
 import { DeliveryModal } from "../../components/pos/DeliveryModal";
-import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, ChevronLeft, CheckCircle2 } from "lucide-react";
+import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, ChevronLeft, CheckCircle2, ShoppingBag } from "lucide-react";
+import { TakeawayModal } from "../../components/pos/TakeawayModal";
 
 export default function POSPage() {
   const { data: session, status } = useSession();
@@ -31,9 +32,12 @@ export default function POSPage() {
   const [splitCash, setSplitCash] = useState("");
   const [splitTransfer, setSplitTransfer] = useState("");
 
-  // Delivery state
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [deliveryData, setDeliveryData] = useState<{name: string, phone: string, address: string, method: string} | null>(null);
+
+  // Takeaway state
+  const [showTakeawayModal, setShowTakeawayModal] = useState(false);
+  const [takeawayData, setTakeawayData] = useState<{name: string, phone: string, method: string} | null>(null);
 
   // Receipt prompt modal
   const [receiptModal, setReceiptModal] = useState<{ orderId: number; paidWith?: string; change?: string } | null>(null);
@@ -124,6 +128,7 @@ export default function POSPage() {
     setCart([]);
     setSelectedTable(null);
     setDeliveryData(null);
+    setTakeawayData(null);
     setEditOrderId(null);
     setViewStep('TABLE');
   };
@@ -138,16 +143,16 @@ export default function POSPage() {
 
   const placeOrder = async (actionMethod: string) => {
     try {
-      if (!selectedTable && !deliveryData) return alert("Selecciona una mesa o un domicilio");
+      if (!selectedTable && !deliveryData && !takeawayData) return alert("Selecciona una mesa, domicilio o para llevar");
       if (cart.length === 0) return alert("Agrega al menos un producto al pedido");
 
       const subtotal = cart.reduce((s, i) => s + (i.size.price * i.quantity), 0);
 
       const orderData = {
-        source: deliveryData ? OrderSource.DELIVERY : OrderSource.POS,
+        source: takeawayData ? OrderSource.TAKEAWAY : (deliveryData ? OrderSource.DELIVERY : OrderSource.POS),
         tableId: selectedTable ? selectedTable.id : null,
-        customerName: deliveryData?.name || null,
-        customerPhone: deliveryData?.phone || null,
+        customerName: takeawayData?.name || deliveryData?.name || null,
+        customerPhone: takeawayData?.phone || deliveryData?.phone || null,
         customerAddress: deliveryData?.address || null,
         notes: deliveryData ? `Método de pago: ${deliveryData.method}` : null,
         total: subtotal,
@@ -395,7 +400,16 @@ export default function POSPage() {
                     setViewStep('PRODUCTS');
                   }
                 }}
-                onSelectDelivery={() => setShowDeliveryModal(true)}
+                onSelectDelivery={() => {
+                  setShowDeliveryModal(true);
+                  setSelectedTable(null);
+                  setTakeawayData(null);
+                }}
+                onSelectTakeaway={() => {
+                  setShowTakeawayModal(true);
+                  setSelectedTable(null);
+                  setDeliveryData(null);
+                }}
               />
               {showDeliveryModal && (
                 <DeliveryModal 
@@ -403,7 +417,20 @@ export default function POSPage() {
                   onConfirm={(data) => {
                     setDeliveryData(data);
                     setSelectedTable(null);
+                    setTakeawayData(null);
                     setShowDeliveryModal(false);
+                    setViewStep('PRODUCTS');
+                  }}
+                />
+              )}
+              {showTakeawayModal && (
+                <TakeawayModal
+                  onCancel={() => setShowTakeawayModal(false)}
+                  onConfirm={(data) => {
+                    setTakeawayData(data);
+                    setSelectedTable(null);
+                    setDeliveryData(null);
+                    setShowTakeawayModal(false);
                     setViewStep('PRODUCTS');
                   }}
                 />
@@ -563,6 +590,8 @@ export default function POSPage() {
                 onClearCart={clearCart}
                 onPlaceOrder={placeOrder}
                 isDelivery={!!deliveryData}
+                isTakeaway={!!takeawayData}
+                customerName={takeawayData?.name || deliveryData?.name || ""}
                 isEditing={!!editOrderId}
               />
             </div>

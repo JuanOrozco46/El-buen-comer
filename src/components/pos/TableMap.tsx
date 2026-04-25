@@ -2,15 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { Table } from "../../types";
-import { Loader2, Users, Truck } from "lucide-react";
+import { Loader2, Users, Truck, ShoppingBag } from "lucide-react";
 
 interface Props {
   onSelect: (table: Table) => void;
   onSelectDelivery?: () => void;
   selectedTableId?: number;
+  onSelectTakeaway?: () => void;
 }
 
-export function TableMap({ onSelect, onSelectDelivery, selectedTableId }: Props) {
+export function TableMap({ onSelect, onSelectDelivery, onSelectTakeaway, selectedTableId }: Props) {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,8 +50,22 @@ export function TableMap({ onSelect, onSelectDelivery, selectedTableId }: Props)
           <div className="p-3 rounded-2xl bg-white/20">
             <Truck size={24} />
           </div>
-          <span className="text-xl font-black mt-1">DOMICILIO</span>
+          <span className="text-xl font-black mt-1 leading-none text-center">DOMICILIO</span>
           <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Nuevo Envío</span>
+        </button>
+      )}
+
+      {/* Botón Permanente de Para Llevar */}
+      {onSelectTakeaway && (
+        <button
+          onClick={onSelectTakeaway}
+          className="aspect-square rounded-[32px] p-4 flex flex-col items-center justify-center gap-2 transition-all duration-300 border-2 bg-purple-600 border-purple-600 text-white shadow-xl shadow-purple-600/30 hover:scale-105"
+        >
+          <div className="p-3 rounded-2xl bg-white/20">
+            <ShoppingBag size={24} />
+          </div>
+          <span className="text-xl font-black mt-1 leading-none text-center">PARA LLEVAR</span>
+          <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Nuevo Pedido</span>
         </button>
       )}
 

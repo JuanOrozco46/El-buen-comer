@@ -159,10 +159,12 @@ export default function KitchenPrintTicket() {
           <div className="text-center mb-4 border-b-8 border-black pb-4">
             <h2 className="font-black text-[24px] uppercase mb-1">COMANDA COCINA</h2>
             <div className="border-[4px] border-black p-1 my-2">
-              {order.source === 'DELIVERY' || order.customerAddress ? (
+              {order.source === 'DELIVERY' || order.source === 'TAKEAWAY' || order.customerAddress ? (
                 <div className="flex flex-col items-center">
                   <div className="w-full py-1">
-                    <p className="font-black text-[30px] leading-none text-center tracking-tighter">DOMICILIO</p>
+                    <p className="font-black text-[30px] leading-none text-center tracking-tighter">
+                      {order.source === 'TAKEAWAY' ? 'PARA LLEVAR' : 'DOMICILIO'}
+                    </p>
                   </div>
                   <div className="w-full text-left font-black text-[13px] border-t-2 border-black pt-1 mt-1 break-inside-avoid space-y-1">
                     {order.customerName && <p>CLI: {order.customerName}</p>}

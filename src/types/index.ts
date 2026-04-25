@@ -10,7 +10,8 @@ export enum OrderStatus {
 export enum OrderSource {
   POS = 'POS',
   WHATSAPP = 'WHATSAPP',
-  DELIVERY = 'DELIVERY'
+  DELIVERY = 'DELIVERY',
+  TAKEAWAY = 'TAKEAWAY'
 }
 
 export interface ProductSize {

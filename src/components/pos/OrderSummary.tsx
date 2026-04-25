@@ -1,5 +1,5 @@
 import { CartItem, Table } from "../../types";
-import { ShoppingBag, Trash2, ChefHat, AlertTriangle, MessageSquare, MapPin } from "lucide-react";
+import { ShoppingBag, Trash2, ChefHat, AlertTriangle, MessageSquare, MapPin, Truck } from "lucide-react";
 import { useState } from "react";
 
 interface OrderSummaryProps {
@@ -11,7 +11,9 @@ interface OrderSummaryProps {
   onUpdateNotes: (productId: number, sizeId: number, notes: string) => void;
   onClearCart: () => void;
   onPlaceOrder: (paymentType: string) => void;
-  isDelivery?: boolean,
+  isDelivery?: boolean;
+  isTakeaway?: boolean;
+  customerName?: string;
   isEditing?: boolean;
 }
 
@@ -25,6 +27,8 @@ export const OrderSummary = ({
   onClearCart, 
   onPlaceOrder,
   isDelivery,
+  isTakeaway,
+  customerName,
   isEditing
 }: OrderSummaryProps) => {
   const [editingNotes, setEditingNotes] = useState<string | null>(null); // e.g., "prodId-sizeId"
@@ -36,8 +40,8 @@ export const OrderSummary = ({
       alert("⚠️ MODO PÁNICO ACTIVO: La cocina está saturada. No se pueden procesar nuevos pedidos.");
       return;
     }
-    if (!selectedTable && !isDelivery) {
-      alert("Por favor selecciona una mesa primero.");
+    if (!selectedTable && !isDelivery && !isTakeaway) {
+      alert("Por favor selecciona una mesa o un modo de entrega.");
       return;
     }
     if (role === 'WAITER' && method !== 'PENDING') {
@@ -64,7 +68,12 @@ export const OrderSummary = ({
             )}
             {isDelivery && (
               <p className="flex items-center gap-1 text-[10px] text-orange-400 font-black uppercase tracking-widest mt-1">
-                <ShoppingBag size={10} /> DOMICILIO
+                <Truck size={10} /> DOMICILIO {customerName && `- ${customerName}`}
+              </p>
+            )}
+            {isTakeaway && (
+              <p className="flex items-center gap-1 text-[10px] text-purple-400 font-black uppercase tracking-widest mt-1">
+                <ShoppingBag size={10} /> PARA LLEVAR {customerName && `- ${customerName}`}
               </p>
             )}
           </div>
@@ -173,7 +182,7 @@ export const OrderSummary = ({
             </span>
           </div>
           <span className="text-[10px] opacity-70 font-bold tracking-[0.2em]">
-            {isDelivery ? "DOMICILIO" : `Mesa ${selectedTable?.number || "?"}`}
+            {isDelivery ? `DOMICILIO ${customerName ? `(${customerName})` : ''}` : (isTakeaway ? `PARA LLEVAR ${customerName ? `(${customerName})` : ''}` : `Mesa ${selectedTable?.number || "?"}`)}
           </span>
         </button>
       </div>
