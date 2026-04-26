@@ -139,6 +139,34 @@ export default function SalesHistoryPage() {
         </div>
       )}
 
+      {/* Waiter Totals */}
+      {!loading && orders.length > 0 && (
+        <div className="space-y-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 ml-2">Ventas por Mesero</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {Object.entries(
+              orders.reduce((acc: any, order) => {
+                const name = order.user?.name || "Sistema";
+                acc[name] = (acc[name] || 0) + Number(order.total);
+                return acc;
+              }, {})
+            ).map(([name, total]: [string, any]) => (
+              <div key={name} className="bg-white border border-zinc-100 p-4 rounded-2xl shadow-sm hover:border-orange-200 transition-all group">
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <div className="w-10 h-10 bg-zinc-50 text-zinc-400 rounded-full flex items-center justify-center group-hover:bg-orange-50 group-hover:text-orange-600 transition-all">
+                    <User size={20} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-tight text-zinc-900 truncate w-full">{name}</p>
+                    <p className="text-sm font-black text-orange-600">${total.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Main Table */}
       <div className="bg-white border border-zinc-100 rounded-[32px] overflow-hidden shadow-sm">
         {loading ? (
