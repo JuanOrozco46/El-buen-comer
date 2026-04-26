@@ -68,6 +68,7 @@ export interface FullOrder {
   createdAt: Date | string;
   items: OrderItem[];
   payments?: Payment[];
+  user?: { name: string } | null;
 }export interface Table {
   id: number;
   number: string;
