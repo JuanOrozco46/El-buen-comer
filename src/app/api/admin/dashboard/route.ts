@@ -114,6 +114,7 @@ export async function GET(req: Request) {
     const waiterDataRaw = await prisma.order.groupBy({
       by: ['userId'],
       _count: { id: true },
+      _sum: { total: true },
       where: {
         createdAt: { gte: start, lte: end }
       }
@@ -126,7 +127,8 @@ export async function GET(req: Request) {
       });
       return {
         name: user?.name || "User",
-        orders: item._count.id
+        orders: item._count.id,
+        revenue: Number(item._sum.total || 0)
       };
     }));
 

@@ -26,7 +26,7 @@ interface DashboardData {
   expenses: number;
   paymentsByMethod: { method: string; total: number; count: number }[];
   topProducts: { name: string; value: number }[];
-  waiterPerformance: { name: string; orders: number }[];
+  waiterPerformance: { name: string; orders: number; revenue: number }[];
   isPanicModeActive: boolean;
 }
 
@@ -323,7 +323,7 @@ export default function Dashboard() {
                 Actividad de Staff
                 <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">Total</span>
              </h3>
-             <div className="space-y-3">
+              <div className="space-y-3">
                 {data?.waiterPerformance.map((w, idx) => (
                   <div key={idx} className="flex items-center justify-between p-4 bg-zinc-50/50 rounded-2xl border border-zinc-100">
                      <div className="flex items-center gap-4">
@@ -332,12 +332,12 @@ export default function Dashboard() {
                         </div>
                         <div>
                            <p className="font-black text-sm text-zinc-900">{w.name}</p>
-                           <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">Staff</p>
+                           <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">{w.orders} órdenes</p>
                         </div>
                      </div>
                      <div className="text-right">
-                        <p className="text-xl font-black text-zinc-900">{w.orders}</p>
-                        <p className="text-[9px] text-orange-600 font-black uppercase tracking-widest">Órdenes</p>
+                        <p className="text-xl font-black text-orange-600">${Number(w.revenue || 0).toLocaleString()}</p>
+                        <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">Total Vendido</p>
                      </div>
                   </div>
                 ))}
