@@ -97,76 +97,6 @@ export default function SalesHistoryPage() {
         </div>
       </header>
 
-      {/* Summary Mini-Cards */}
-      {!loading && orders.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-           <div className="bg-zinc-50 p-5 rounded-3xl border border-zinc-100 flex items-center gap-4">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm">
-                <ShoppingBag size={24} />
-              </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Total Órdenes</p>
-                <p className="text-2xl font-black">{orders.length}</p>
-              </div>
-           </div>
-           <div className="bg-zinc-50 p-5 rounded-3xl border border-zinc-100 flex items-center gap-4">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-emerald-600 shadow-sm">
-                <Banknote size={24} />
-              </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Total Recaudado</p>
-                <p className="text-2xl font-black">${orders.reduce((s,o) => s + Number(o.total), 0).toLocaleString()}</p>
-              </div>
-           </div>
-           <div className="bg-emerald-50 p-5 rounded-3xl border border-emerald-100 flex items-center gap-4">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-emerald-700 shadow-sm">
-                <Banknote size={24} />
-              </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">En Efectivo</p>
-                <p className="text-2xl font-black text-emerald-700">${orders.reduce((s,o) => s + (o.payments?.reduce((ps, p) => p.method === 'CASH' ? ps + Number(p.amount) : ps, 0) || 0), 0).toLocaleString()}</p>
-              </div>
-           </div>
-           <div className="bg-purple-50 p-5 rounded-3xl border border-purple-100 flex items-center gap-4">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-purple-700 shadow-sm">
-                <Smartphone size={24} />
-              </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-purple-600">En Transferencia</p>
-                <p className="text-2xl font-black text-purple-700">${orders.reduce((s,o) => s + (o.payments?.reduce((ps, p) => p.method === 'TRANSFER' ? ps + Number(p.amount) : ps, 0) || 0), 0).toLocaleString()}</p>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {/* Waiter Totals */}
-      {!loading && orders.length > 0 && (
-        <div className="space-y-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 ml-2">Ventas por Mesero</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {Object.entries(
-              orders.reduce((acc: any, order) => {
-                const name = order.user?.name || "Sistema";
-                acc[name] = (acc[name] || 0) + Number(order.total);
-                return acc;
-              }, {})
-            ).map(([name, total]: [string, any]) => (
-              <div key={name} className="bg-white border border-zinc-100 p-4 rounded-2xl shadow-sm hover:border-orange-200 transition-all group">
-                <div className="flex flex-col items-center gap-2 text-center">
-                  <div className="w-10 h-10 bg-zinc-50 text-zinc-400 rounded-full flex items-center justify-center group-hover:bg-orange-50 group-hover:text-orange-600 transition-all">
-                    <User size={20} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-tight text-zinc-900 truncate w-full">{name}</p>
-                    <p className="text-sm font-black text-orange-600">${total.toLocaleString()}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Main Table */}
       <div className="bg-white border border-zinc-100 rounded-[32px] overflow-hidden shadow-sm">
         {loading ? (
@@ -199,10 +129,10 @@ export default function SalesHistoryPage() {
                          <div className="p-2 bg-zinc-100 text-zinc-400 rounded-lg">
                             <Clock size={16} />
                          </div>
-                         <div>
-                            <p className="text-xs font-black text-zinc-900">{new Date(order.createdAt).toLocaleDateString()}</p>
-                            <p className="text-[10px] font-bold text-zinc-400 uppercase">{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                         </div>
+                          <div>
+                             <p className="text-xs font-black text-zinc-900">{new Date(order.createdAt).toLocaleDateString([], { timeZone: 'America/Bogota' })}</p>
+                             <p className="text-[10px] font-bold text-zinc-400 uppercase">{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })}</p>
+                          </div>
                       </div>
                     </td>
                     <td className="px-6 py-5">

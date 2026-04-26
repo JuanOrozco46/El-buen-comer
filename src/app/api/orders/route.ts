@@ -43,7 +43,7 @@ export async function GET(req: Request) {
         payments: true
       },
       orderBy: { createdAt: "desc" },
-      take: statusFilter === "active" ? undefined : limit
+      take: statusFilter === "active" ? undefined : (from || to ? 5000 : limit)
     });
 
     return NextResponse.json(orders);
