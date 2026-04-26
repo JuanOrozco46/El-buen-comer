@@ -21,7 +21,8 @@ export async function GET(req: Request) {
     let start: Date;
     let end: Date;
 
-    const now = new Date();
+    // Forced Bogota Timezone for correct "Today" calculation
+    const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
 
     switch (range) {
       case "yesterday":

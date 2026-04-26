@@ -62,11 +62,20 @@ const methodColors: Record<string, string> = {
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const getLocalDate = () => {
+    return new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Bogota', 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit' 
+    }).format(new Date());
+  };
+
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
   const [selectedRange, setSelectedRange] = useState<DateRange>("today");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const [customFrom, setCustomFrom] = useState(getLocalDate());
+  const [customTo, setCustomTo] = useState(getLocalDate());
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");

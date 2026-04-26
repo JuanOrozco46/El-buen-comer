@@ -31,10 +31,19 @@ const methodIcons: Record<string, any> = {
 };
 
 export default function SalesHistoryPage() {
+  const getLocalDate = () => {
+    return new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Bogota', 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit' 
+    }).format(new Date());
+  };
+
   const [orders, setOrders] = useState<FullOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [from, setFrom] = useState(new Date().toISOString().split("T")[0]);
-  const [to, setTo] = useState(new Date().toISOString().split("T")[0]);
+  const [from, setFrom] = useState(getLocalDate());
+  const [to, setTo] = useState(getLocalDate());
 
   const fetchHistory = async () => {
     setLoading(true);
