@@ -127,6 +127,7 @@ export async function GET(req: Request) {
         select: { name: true }
       });
       return {
+        id: item.userId,
         name: user?.name || "User",
         orders: item._count.id,
         revenue: Number(item._sum.total || 0)

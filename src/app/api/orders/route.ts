@@ -10,11 +10,14 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const statusFilter = searchParams.get("status");
+    const userId = searchParams.get("userId");
     const limit = Number(searchParams.get("limit")) || 50;
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
     const where: any = {};
+    if (userId) where.userId = Number(userId);
+    
     if (statusFilter === "active") {
       where.status = { notIn: ["PAID", "CANCELLED"] };
     } else if (statusFilter) {

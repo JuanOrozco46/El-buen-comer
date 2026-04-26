@@ -26,7 +26,7 @@ interface DashboardData {
   expenses: number;
   paymentsByMethod: { method: string; total: number; count: number }[];
   topProducts: { name: string; value: number }[];
-  waiterPerformance: { name: string; orders: number; revenue: number }[];
+  waiterPerformance: { id: number; name: string; orders: number; revenue: number }[];
   isPanicModeActive: boolean;
 }
 
@@ -76,6 +76,44 @@ export default function Dashboard() {
   const [selectedRange, setSelectedRange] = useState<DateRange>("today");
   const [customFrom, setCustomFrom] = useState(getLocalDate());
   const [customTo, setCustomTo] = useState(getLocalDate());
+  const [selectedWaiter, setSelectedWaiter] = useState<{ id: number; name: string } | null>(null);
+  const [waiterOrders, setWaiterOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const fetchWaiterOrders = async (waiterId: number) => {
+    setLoadingOrders(true);
+    try {
+      let url = `/api/orders?userId=${waiterId}`;
+      if (selectedRange === "custom") {
+        url += `&from=${customFrom}&to=${customTo}`;
+      } else {
+        // Use existing ranges
+        const now = new Date();
+        let from, to;
+        if (selectedRange === "today") { from = getLocalDate(); to = getLocalDate(); }
+        else if (selectedRange === "yesterday") { 
+          const d = new Date(); d.setDate(d.getDate() - 1);
+          from = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(d);
+          to = from;
+        }
+        // ... simple enough to just use the actual from/to if we were clever, 
+        // but let's just use the selectedRange logic
+        url += `&from=${from}&to=${to}`;
+      }
+      const res = await fetch(url);
+      const data = await res.json();
+      setWaiterOrders(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  const handleWaiterClick = (waiter: { id: number; name: string }) => {
+    setSelectedWaiter(waiter);
+    fetchWaiterOrders(waiter.id);
+  };
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -334,26 +372,112 @@ export default function Dashboard() {
              </h3>
               <div className="space-y-3">
                 {data?.waiterPerformance.map((w, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 bg-zinc-50/50 rounded-2xl border border-zinc-100">
+                  <div 
+                    key={idx} 
+                    onClick={() => handleWaiterClick({ id: w.id, name: w.name })}
+                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer group ${
+                      selectedWaiter?.id === w.id ? "bg-orange-600 border-orange-500 shadow-lg shadow-orange-600/20" : "bg-zinc-50/50 border-zinc-100 hover:border-orange-200"
+                    }`}
+                  >
                      <div className="flex items-center gap-4">
-                        <div className="w-11 h-11 bg-white border border-zinc-200 rounded-xl flex items-center justify-center font-black text-orange-600 text-base shadow-sm">
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-black text-base shadow-sm ${
+                          selectedWaiter?.id === w.id ? "bg-white text-orange-600" : "bg-white text-orange-600 border border-zinc-200"
+                        }`}>
                            {w.name.charAt(0)}
                         </div>
                         <div>
-                           <p className="font-black text-sm text-zinc-900">{w.name}</p>
-                           <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">{w.orders} órdenes</p>
+                           <p className={`font-black text-sm ${selectedWaiter?.id === w.id ? "text-white" : "text-zinc-900"}`}>{w.name}</p>
+                           <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedWaiter?.id === w.id ? "text-orange-100" : "text-zinc-400"}`}>{w.orders} órdenes</p>
                         </div>
                      </div>
                      <div className="text-right">
-                        <p className="text-xl font-black text-orange-600">${Number(w.revenue || 0).toLocaleString()}</p>
-                        <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">Total Vendido</p>
+                        <p className={`text-xl font-black ${selectedWaiter?.id === w.id ? "text-white" : "text-orange-600"}`}>${Number(w.revenue || 0).toLocaleString()}</p>
+                        <p className={`text-[9px] font-black uppercase tracking-widest ${selectedWaiter?.id === w.id ? "text-orange-100" : "text-zinc-400"}`}>Total Vendido</p>
                      </div>
                   </div>
                 ))}
-                {data?.waiterPerformance.length === 0 && <p className="text-zinc-400 font-bold uppercase tracking-widest text-center py-12 text-xs">Sin actividad en este período</p>}
+                {data?.waiterPerformance.length === 0 && (
+                  <p className="text-zinc-400 font-bold uppercase tracking-widest text-center py-12 text-xs">Sin actividad en este período</p>
+                )}
              </div>
           </div>
         </div>
+
+        {/* Selected Waiter Detail Breakdown */}
+        {selectedWaiter && (
+          <div className="animate-in fade-in slide-in-from-bottom-5 duration-500 space-y-4 mb-20">
+            <div className="flex items-center justify-between bg-zinc-900 p-6 rounded-[32px] text-white shadow-2xl shadow-zinc-900/20">
+              <div className="flex items-center gap-4">
+                 <div className="w-12 h-12 bg-orange-600 rounded-2xl flex items-center justify-center font-black text-xl">
+                    {selectedWaiter.name.charAt(0)}
+                 </div>
+                 <div>
+                    <h3 className="text-xl font-black tracking-tight">Desglose de <span className="text-orange-500">{selectedWaiter.name}</span></h3>
+                    <p className="text-[10px] uppercase font-black tracking-widest text-zinc-500">Listado de pedidos realizados</p>
+                 </div>
+              </div>
+              <button 
+                onClick={() => setSelectedWaiter(null)}
+                className="text-white/40 hover:text-white transition-colors p-2 font-black"
+              >
+                Cerrar ×
+              </button>
+            </div>
+
+            <div className="bg-white rounded-[40px] border border-zinc-100 shadow-xl overflow-hidden">
+               {loadingOrders ? (
+                 <div className="py-24 flex flex-col items-center justify-center gap-4">
+                    <Loader2 className="animate-spin text-orange-600" size={32} />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Obteniendo recibos...</p>
+                 </div>
+               ) : waiterOrders.length === 0 ? (
+                 <div className="py-24 text-center">
+                    <p className="text-zinc-400 font-bold uppercase tracking-widest text-xs">No se encontraron pedidos específicos.</p>
+                 </div>
+               ) : (
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                       <thead className="bg-zinc-50/50 border-b border-zinc-100">
+                          <tr>
+                            <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-400">Hora</th>
+                            <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-400">Cliente</th>
+                            <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-400">Platos</th>
+                            <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-400 text-right">Monto</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-zinc-50">
+                          {waiterOrders.map(order => (
+                            <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
+                              <td className="px-8 py-6">
+                                <p className="text-xs font-black text-zinc-900">
+                                  {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })}
+                                </p>
+                              </td>
+                              <td className="px-8 py-6">
+                                <p className="text-xs font-black text-zinc-900">{order.customerName || `Pedido #${order.id}`}</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-orange-500">{order.source}</p>
+                              </td>
+                              <td className="px-8 py-6">
+                                 <div className="flex flex-wrap gap-1">
+                                    {order.items.map((item: any, i: number) => (
+                                      <span key={i} className="text-[9px] font-black bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-md">
+                                        {item.quantity}x {item.product.name}
+                                      </span>
+                                    ))}
+                                 </div>
+                              </td>
+                              <td className="px-8 py-6 text-right font-black text-zinc-900 text-sm">
+                                 ${Number(order.total).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+               )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
