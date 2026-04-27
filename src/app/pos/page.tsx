@@ -206,7 +206,7 @@ export default function POSPage() {
     }
   };
 
-  const startEditingOrder = async (orderId: number, table: Table) => {
+  const startEditingOrder = async (orderId: number, table: any) => {
     try {
       setLoading(true);
       const res = await fetch(`/api/orders/${orderId}`);
@@ -224,6 +224,24 @@ export default function POSPage() {
       setCart(cartItems);
       setEditOrderId(orderId);
       setSelectedTable(table);
+      
+      // If it's a delivery/takeaway, set the specific data for the summary
+      if (orderData.source === 'DELIVERY') {
+        setDeliveryData({ 
+          name: orderData.customerName || "", 
+          phone: orderData.customerPhone || "", 
+          address: orderData.customerAddress || "", 
+          method: "", 
+          fee: orderData.deliveryFee || 0 
+        });
+      } else if (orderData.source === 'TAKEAWAY') {
+        setTakeawayData({ 
+          name: orderData.customerName || "", 
+          phone: orderData.customerPhone || "", 
+          method: "" 
+        });
+      }
+
       setViewStep('PRODUCTS');
     } catch (err) {
       alert("Error al cargar la orden para edición.");
@@ -417,6 +435,7 @@ export default function POSPage() {
             <section className="flex-1 overflow-y-auto bg-zinc-50 animate-in fade-in">
               <TableMap 
                 selectedTableId={selectedTable?.id}
+                pendingOrders={pendingOrders}
                 onSelect={(table) => {
                   const hasOrder = table.orders && table.orders.length > 0;
                   if (hasOrder) {
@@ -424,8 +443,16 @@ export default function POSPage() {
                   } else {
                     setSelectedTable(table);
                     setDeliveryData(null);
+                    setTakeawayData(null);
                     setViewStep('PRODUCTS');
                   }
+                }}
+                onSelectOrder={(order) => {
+                  startEditingOrder(order.id, { 
+                    id: null, 
+                    number: `${order.source === 'DELIVERY' ? 'Domi' : 'Barra'} - ${order.customerName || 'S/N'}`,
+                    status: 'OCCUPIED'
+                  });
                 }}
                 onSelectDelivery={() => {
                   setShowDeliveryModal(true);

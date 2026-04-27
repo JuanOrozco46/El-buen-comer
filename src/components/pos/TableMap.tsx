@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Table } from "../../types";
+import { Table, FullOrder } from "../../types";
 import { Loader2, Users, Truck, ShoppingBag } from "lucide-react";
 
 interface Props {
   onSelect: (table: Table) => void;
+  onSelectOrder?: (order: FullOrder) => void;
   onSelectDelivery?: () => void;
   selectedTableId?: number;
   onSelectTakeaway?: () => void;
+  pendingOrders?: FullOrder[];
 }
 
-export function TableMap({ onSelect, onSelectDelivery, onSelectTakeaway, selectedTableId }: Props) {
+export function TableMap({ onSelect, onSelectOrder, onSelectDelivery, onSelectTakeaway, selectedTableId, pendingOrders = [] }: Props) {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,6 +32,9 @@ export function TableMap({ onSelect, onSelectDelivery, onSelectTakeaway, selecte
     return () => clearInterval(interval);
   }, []);
 
+  // Filter orders that are not linked to a table (Delivery, Takeaway)
+  const virtualOrders = pendingOrders.filter(o => !o.tableId && (o.source === 'DELIVERY' || o.source === 'TAKEAWAY' || o.source === 'WHATSAPP'));
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-20">
@@ -40,7 +45,7 @@ export function TableMap({ onSelect, onSelectDelivery, onSelectTakeaway, selecte
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 p-4 md:p-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 p-4 md:p-6 pb-20">
       {/* Botón Permanente de Domicilios */}
       {onSelectDelivery && (
         <button
@@ -69,6 +74,33 @@ export function TableMap({ onSelect, onSelectDelivery, onSelectTakeaway, selecte
         </button>
       )}
 
+      {/* Virtual Tables (Active Delivery/Takeaway Orders) */}
+      {virtualOrders.map(order => (
+        <button
+          key={`virtual-${order.id}`}
+          onClick={() => onSelectOrder && onSelectOrder(order)}
+          className="aspect-square rounded-[32px] p-4 flex flex-col items-center justify-center gap-2 transition-all duration-300 border-2 bg-orange-50 border-orange-200 text-orange-900 shadow-md shadow-orange-900/5 hover:border-orange-400 hover:scale-105"
+        >
+          <div className="p-3 rounded-2xl bg-orange-200/50">
+            {order.source === 'DELIVERY' || order.source === 'WHATSAPP' ? (
+              <Truck size={24} className="text-orange-700" />
+            ) : (
+              <ShoppingBag size={24} className="text-purple-700" />
+            )}
+          </div>
+          <span className="text-base font-black uppercase tracking-tighter truncate w-full text-center">
+            {order.customerName || "S/N"}
+          </span>
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] font-black uppercase tracking-widest text-orange-600">
+              {order.source === 'DELIVERY' ? 'Domicilio' : 'Barra'}
+            </span>
+            <span className="text-[9px] font-bold opacity-60">Orden #{order.id}</span>
+          </div>
+        </button>
+      ))}
+
+      {/* Physical Tables */}
       {tables.map(table => {
         const hasOrder = table.orders && table.orders.length > 0;
         const activeOrderId = hasOrder ? table.orders![0].id : null;
