@@ -83,77 +83,7 @@ export function TakeawayModal({ onCancel, onConfirm }: Props) {
             </div>
           </div>
 
-          <div className="space-y-4">
-            <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-2">Medio de Pago Estimado</label>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setData({ ...data, method: "EFECTIVO" })}
-                className={`py-5 rounded-[28px] font-black text-xs uppercase tracking-widest transition-all border-4 ${
-                  data.method === "EFECTIVO" 
-                    ? "bg-zinc-900 border-zinc-900 text-white shadow-xl shadow-zinc-900/20" 
-                    : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-200"
-                }`}
-              >
-                Efectivo
-              </button>
-              <button
-                type="button"
-                onClick={() => setData({ ...data, method: "TRANSFERENCIA" })}
-                className={`py-5 rounded-[28px] font-black text-xs uppercase tracking-widest transition-all border-4 ${
-                  data.method === "TRANSFERENCIA" 
-                    ? "bg-purple-600 border-purple-600 text-white shadow-xl shadow-purple-600/20" 
-                    : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-200"
-                }`}
-              >
-                Transf.
-              </button>
-              <button
-                type="button"
-                onClick={() => setData({ ...data, method: "DIVIDIR" })}
-                className={`py-5 rounded-[28px] font-black text-xs uppercase tracking-widest transition-all border-4 ${
-                  data.method === "DIVIDIR" 
-                    ? "bg-zinc-800 border-zinc-800 text-white shadow-xl shadow-zinc-800/20" 
-                    : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-200"
-                }`}
-              >
-                Dividir
-              </button>
-            </div>
-          </div>
 
-          {data.method === "DIVIDIR" && (
-            <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 duration-200">
-               <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Monto Efectivo</label>
-                <div className="relative text-left">
-                  <button type="button" className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600">
-                    <span className="font-bold">$</span>
-                  </button>
-                  <input
-                    type="number"
-                    className="w-full bg-emerald-50 border border-emerald-100 rounded-2xl py-3 pl-10 pr-4 font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm"
-                    placeholder="Efectivo"
-                    value={data.splitCash || ''}
-                    onChange={(e) => setData({ ...data, splitCash: Number(e.target.value) })}
-                  />
-                </div>
-               </div>
-               <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Monto Transf.</label>
-                <div className="relative text-left">
-                  <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-purple-600" size={16} />
-                  <input
-                    type="number"
-                    className="w-full bg-purple-50 border border-purple-100 rounded-2xl py-3 pl-10 pr-4 font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-sm"
-                    placeholder="Transferencia"
-                    value={data.splitTransfer || ''}
-                    onChange={(e) => setData({ ...data, splitTransfer: Number(e.target.value) })}
-                  />
-                </div>
-               </div>
-            </div>
-          )}
 
           <button
             type="submit"

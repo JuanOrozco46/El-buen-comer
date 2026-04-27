@@ -15,8 +15,17 @@ export async function GET(req: Request) {
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
+    const isNotAdmin = session.user.role !== 'ADMIN';
+    const currentUserId = Number(session.user.id);
+
     const where: any = {};
-    if (userId) where.userId = Number(userId);
+    
+    // For non-admins: always filter by their userId UNLESS they are viewing active POS orders
+    if (isNotAdmin && statusFilter !== "active") {
+      where.userId = currentUserId;
+    } else if (userId) {
+      where.userId = Number(userId);
+    }
     
     if (statusFilter === "active") {
       where.status = { notIn: ["PAID", "CANCELLED"] };

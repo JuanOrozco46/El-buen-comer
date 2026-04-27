@@ -157,9 +157,7 @@ export default function POSPage() {
         customerName: takeawayData?.name || deliveryData?.name || null,
         customerPhone: takeawayData?.phone || deliveryData?.phone || null,
         customerAddress: deliveryData?.address || null,
-        notes: (deliveryData || takeawayData) ? 
-          `Método de pago: ${((deliveryData || takeawayData) as any).method}${(deliveryData || takeawayData as any).method === 'DIVIDIR' ? ` (EFEC: ${(deliveryData || takeawayData as any).splitCash}, TRANS: ${(deliveryData || takeawayData as any).splitTransfer})` : ''}` 
-          : null,
+        notes: null,
         total: total,
         deliveryFee: deliveryFee,
         status: actionMethod === 'PENDING' ? 'PENDING' : 'COMPLETED',
@@ -568,35 +566,9 @@ export default function POSPage() {
                       <p className="text-xl lg:text-2xl font-black text-orange-600 mb-4">${Number(order.total).toLocaleString()}</p>
 
                       <div className="grid grid-cols-2 gap-2 text-white font-black text-[10px] uppercase tracking-widest">
-                        {(order.source === 'DELIVERY' || order.source === 'TAKEAWAY' || order.source === 'WHATSAPP') ? (
-                          <button
-                            onClick={() => {
-                              if (order.notes?.toUpperCase().includes('DIVIDIR')) {
-                                const cashMatch = order.notes.match(/EFEC:\s*(\d+(\.\d*)?)/i);
-                                const transMatch = order.notes.match(/TRANS:\s*(\d+(\.\d*)?)/i);
-                                
-                                if (cashMatch && transMatch) {
-                                  handleAutomatedSplitPayment(order.id, parseFloat(cashMatch[1]), parseFloat(transMatch[1]));
-                                } else {
-                                  openSplitModal(order.id, Number(order.total));
-                                }
-                              } else {
-                                const method = order.notes?.toUpperCase().includes('TRANSFERENCIA') ? 'TRANSFER' : 'CASH';
-                                markAsPaid(order.id, method);
-                              }
-                            }}
-                            className="col-span-2 bg-orange-600 hover:bg-orange-500 p-4 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-3"
-                          >
-                            <CheckCircle2 size={18} />
-                            <span className="text-xs">PEDIDO DESPACHADO</span>
-                          </button>
-                        ) : (
-                          <>
-                            <button onClick={() => openCashModal(order.id, Number(order.total))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
-                            <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
-                            <button onClick={() => openSplitModal(order.id, Number(order.total))} className="col-span-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir Pago</button>
-                          </>
-                        )}
+                        <button onClick={() => openCashModal(order.id, Number(order.total))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
+                        <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
+                        <button onClick={() => openSplitModal(order.id, Number(order.total))} className="col-span-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir Pago</button>
                       </div>
                     </div>
                   </div>

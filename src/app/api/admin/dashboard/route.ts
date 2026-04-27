@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'ADMIN') {
+    if (!session || (session.user.role !== 'ADMIN' && session.user.role !== 'CASHIER')) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -17,6 +17,9 @@ export async function GET(req: Request) {
     const range = searchParams.get("range") || "today";
     const fromParam = searchParams.get("from");
     const toParam = searchParams.get("to");
+
+    const isNotAdmin = session.user.role !== 'ADMIN';
+    const userId = Number(session.user.id);
 
     let start: Date;
     let end: Date;
@@ -47,25 +50,38 @@ export async function GET(req: Request) {
         break;
     }
 
+    // Common where clause for role-based privacy
+    const privacyFilter = isNotAdmin ? { userId: userId } : {};
+
     // 1. Total Revenue (PAID orders in range)
     const revenueData = await prisma.order.aggregate({
       where: {
         status: 'PAID',
-        createdAt: { gte: start, lte: end }
+        createdAt: { gte: start, lte: end },
+        ...privacyFilter
       },
       _sum: { total: true },
       _count: { id: true }
     });
 
     // 2. Pending Orders Count (active, not date-filtered)
+    // For pending orders, we might want to show all for POS, 
+    // but the user said "records of their sales". 
+    // In the dashboard, let's filter pending too to match the "their records" rule.
     const pendingCount = await prisma.order.count({
-      where: { status: { notIn: ['PAID', 'CANCELLED'] } }
+      where: { 
+        status: { notIn: ['PAID', 'CANCELLED'] },
+        ...privacyFilter
+      }
     });
 
-    // 3. Expenses in range
+    // 3. Expenses in range (Only Admin should see all expenses, or filter by user?)
+    // Usually expenses are global or by user who registered it. 
+    // Let's filter expenses too for cashier dashboard.
     const expensesData = await prisma.expense.aggregate({
       where: {
-        createdAt: { gte: start, lte: end }
+        createdAt: { gte: start, lte: end },
+        ...privacyFilter
       },
       _sum: { amount: true }
     });
@@ -74,17 +90,32 @@ export async function GET(req: Request) {
     const paymentBreakdown = await prisma.payment.groupBy({
       by: ['method'],
       where: {
-        createdAt: { gte: start, lte: end }
+        createdAt: { gte: start, lte: end },
+        order: privacyFilter // prisma allows filtering related records if needed, but let's be safe
       },
       _sum: { amount: true },
       _count: { id: true }
     });
 
-    const paymentsByMethod = paymentBreakdown.map(p => ({
-      method: p.method,
-      total: Number(p._sum.amount || 0),
-      count: p._count.id
-    }));
+    // Wait, the Payment table doesn't have userId directly. 
+    // We need to filter payments by order.userId
+    const filteredPayments = await prisma.payment.findMany({
+      where: {
+        createdAt: { gte: start, lte: end },
+        order: privacyFilter
+      }
+    });
+    
+    // Group them manually if needed or use nested groupBy if prisma supports it well
+    // Let's use a simpler approach: get payment methods from filtered orders
+    const paymentsByMethod = ['CASH', 'TRANSFER', 'CARD', 'MIXED'].map(method => {
+      const perMethod = filteredPayments.filter(p => p.method === method);
+      return {
+        method,
+        total: perMethod.reduce((acc, p) => acc + Number(p.amount), 0),
+        count: perMethod.length
+      };
+    }).filter(p => p.count > 0);
 
     // 5. Top Products (By Quantity in range)
     const topProductsRaw = await prisma.orderItem.groupBy({
@@ -93,7 +124,8 @@ export async function GET(req: Request) {
       where: {
         order: {
           status: 'PAID',
-          createdAt: { gte: start, lte: end }
+          createdAt: { gte: start, lte: end },
+          ...privacyFilter
         }
       },
       orderBy: { _sum: { quantity: 'desc' } },
@@ -111,13 +143,14 @@ export async function GET(req: Request) {
       };
     }));
 
-    // 6. Waiter Performance in range
+    // 6. Waiter Performance in range (ADMIN sees all, CASHIER sees only self)
     const waiterDataRaw = await prisma.order.groupBy({
       by: ['userId'],
       _count: { id: true },
       _sum: { total: true },
       where: {
-        createdAt: { gte: start, lte: end }
+        createdAt: { gte: start, lte: end },
+        ...privacyFilter
       }
     });
 
