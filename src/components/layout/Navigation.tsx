@@ -12,7 +12,8 @@ import {
   LogOut,
   MapPin,
   Utensils,
-  History
+  History,
+  DollarSign
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useSession, signOut } from "next-auth/react";
@@ -20,6 +21,7 @@ import { useSession, signOut } from "next-auth/react";
 const NAV_ITEMS = [
   { icon: Home, label: "Dashboard", href: "/", roles: ["ADMIN"] },
   { icon: LayoutGrid, label: "Pedidos", href: "/pos", roles: ["ADMIN", "CASHIER", "WAITER"] },
+  { icon: DollarSign, label: "Resumen", href: "/pos?view=summary", roles: ["ADMIN", "CASHIER"] },
   // { icon: MapPin, label: "Mesas", href: "/tables", roles: ["ADMIN", "WAITER", "CASHIER"] }, // Future expansion
   { icon: ChefHat, label: "Cocina", href: "/kitchen", roles: ["ADMIN", "CHEF"] },
   { icon: Package, label: "Inventario", href: "/admin/inventory", roles: ["ADMIN"] },

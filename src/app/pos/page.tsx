@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Product, ProductSize, CartItem, OrderSource, FullOrder, Table } from "../../types";
 import { ProductCard } from "../../components/pos/ProductCard";
 import { OrderSummary } from "../../components/pos/OrderSummary";
@@ -22,8 +23,18 @@ export default function POSPage() {
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
 
-  // Tab control: 'NEW' for placing orders, 'PENDING' for cashing out
-  const [viewMode, setViewMode] = useState<'NEW' | 'PENDING'>('NEW');
+  // Tab control: 'NEW' for placing orders, 'PENDING' for cashing out, 'SUMMARY' for shift stats
+  const [viewMode, setViewMode] = useState<'NEW' | 'PENDING' | 'SUMMARY'>('NEW');
+  
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const v = searchParams.get("view");
+    if (v === "summary") setViewMode('SUMMARY');
+    else if (v === "pending") setViewMode('PENDING');
+    else setViewMode('NEW');
+  }, [searchParams]);
   const [viewStep, setViewStep] = useState<'TABLE' | 'PRODUCTS'>('TABLE');
   const [isPanicActive, setIsPanicActive] = useState(false);
   const [editOrderId, setEditOrderId] = useState<number | null>(null);
@@ -538,6 +549,54 @@ export default function POSPage() {
               )}
             </section>
           )
+        ) : viewMode === 'SUMMARY' ? (
+          <section className="flex-1 overflow-y-auto p-4 lg:p-8 bg-zinc-50 animate-in fade-in">
+             <h2 className="text-xl lg:text-2xl font-black mb-8 text-zinc-800 tracking-tight flex items-center gap-3">
+              <DollarSign className="text-emerald-500" />
+              Resumen del Turno
+              <span className="ml-3 text-sm font-bold text-zinc-400">Hoy</span>
+            </h2>
+
+            {/* Shift Sales Dashboard */}
+            {salesSummary.length > 0 ? (
+              <div className="bg-white border-2 border-zinc-100 rounded-[40px] p-8 lg:p-12 shadow-sm">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
+                  <div>
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-2">Recaudación Total (Día Actual)</h3>
+                    <p className="text-4xl md:text-6xl font-black text-emerald-600 tracking-tighter">
+                      ${salesSummary.reduce((acc: any, s: any) => acc + s.total, 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={refreshOrders}
+                    className="px-6 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-2"
+                  >
+                    Actualizar Datos
+                  </button>
+                </div>
+                
+                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-6 px-2">Desglose por Mesero</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {salesSummary.map((userSum: any) => (
+                    <div key={userSum.id} className="flex items-center gap-4 bg-zinc-50 p-5 rounded-[32px] border border-zinc-100 shadow-sm transition-all hover:scale-[1.02]">
+                      <div className="w-14 h-14 bg-white shadow-sm text-zinc-600 rounded-2xl flex items-center justify-center font-black text-lg shrink-0">
+                        {userSum.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 truncate leading-none mb-1.5">{userSum.name}</p>
+                        <p className="text-xl font-black text-zinc-900 leading-none">${userSum.total.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64 text-zinc-400 bg-white rounded-[40px] border-2 border-dashed border-zinc-200">
+                <Loader2 className="animate-spin mb-4" size={32} />
+                <p className="font-bold uppercase tracking-widest text-xs">Calculando totales del día...</p>
+              </div>
+            )}
+          </section>
         ) : (
           <section className="flex-1 overflow-y-auto p-4 lg:p-8 bg-zinc-50">
             <h2 className="text-xl lg:text-2xl font-black mb-4 text-zinc-800 tracking-tight">
@@ -545,39 +604,6 @@ export default function POSPage() {
               <span className="ml-3 text-sm font-bold text-zinc-400">({pendingOrders.length} activas)</span>
             </h2>
 
-            {/* Shift Sales Dashboard */}
-            {salesSummary.length > 0 && (
-              <div className="bg-white border-2 border-zinc-100 rounded-[32px] p-6 mb-8 shadow-sm">
-                <div className="flex justify-between items-end mb-6">
-                  <div>
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-1">Recaudación del Turno (Hoy)</h3>
-                    <p className="text-3xl font-black text-emerald-600">
-                      ${salesSummary.reduce((acc, s) => acc + s.total, 0).toLocaleString()}
-                    </p>
-                  </div>
-                  <button 
-                    onClick={refreshOrders}
-                    className="px-4 py-2 bg-zinc-50 hover:bg-zinc-100 text-zinc-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-100"
-                  >
-                    Actualizar
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {salesSummary.map(userSum => (
-                    <div key={userSum.id} className="flex items-center gap-3 bg-zinc-50 p-3 rounded-2xl border border-zinc-100">
-                      <div className="w-10 h-10 bg-white shadow-sm text-zinc-600 rounded-xl flex items-center justify-center font-black text-xs shrink-0">
-                        {userSum.name.charAt(0)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400 truncate leading-none mb-1">{userSum.name}</p>
-                        <p className="text-sm font-black text-zinc-900 leading-none">${userSum.total.toLocaleString()}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             {pendingOrders.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-zinc-400">
                 <ListOrdered size={64} className="opacity-20 mb-4" />

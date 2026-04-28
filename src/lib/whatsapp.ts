@@ -129,17 +129,24 @@ export function formatMenuMessage(
 /**
  * Sends a media message (image) to a WhatsApp number via the Evolution API.
  * @param to - Phone number or JID
- * @param mediaUrl - URL of the image to send
+ * @param mediaUrl - Optional URL of the image. If not provided, it uses process.env.MENU.
  * @param caption - Optional caption
  */
-export async function sendWhatsAppMedia(to: string, mediaUrl: string, caption?: string): Promise<boolean> {
+export async function sendWhatsAppMedia(to: string, mediaUrl?: string, caption?: string): Promise<boolean> {
   if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE_NAME) {
     console.warn("[WhatsApp] Missing API credentials for media. Message not sent.");
     return false;
   }
 
+  const finalUrl = mediaUrl || process.env.MENU;
+
+  if (!finalUrl) {
+    console.error("[WhatsApp] No MENU URL found in env or parameters.");
+    return false;
+  }
+
   try {
-    console.log(`[WhatsApp] Sending media to ${to}: ${mediaUrl}`);
+    console.log(`[WhatsApp] Sending media to ${to}: ${finalUrl}`);
     const response = await fetch(
       `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`,
       {
@@ -157,7 +164,9 @@ export async function sendWhatsAppMedia(to: string, mediaUrl: string, caption?: 
           mediaMessage: {
             mediatype: "image",
             caption: caption || "",
-            media: mediaUrl
+            image: { 
+              url: finalUrl 
+            }
           }
         }),
       }

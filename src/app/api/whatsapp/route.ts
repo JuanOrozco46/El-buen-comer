@@ -286,8 +286,7 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
     // 6. Send Response to User via WhatsApp
     if (geminiResponse.intent === "send_menu") {
        console.log(`[WhatsApp Bot] Intent: send_menu detected. Sending media to ${remoteJid}...`);
-       const mediaUrl = "https://i.postimg.cc/yxk0bz65/Whats-App-Image-2026-04-24-at-3-05-45-PM.jpg";
-       const success = await sendWhatsAppMedia(remoteJid || "", mediaUrl, geminiResponse.replyText);
+       const success = await sendWhatsAppMedia(remoteJid || "", undefined, geminiResponse.replyText);
        if (!success) {
           console.error("[WhatsApp Bot] Failed to send menu via sendWhatsAppMedia");
        }
