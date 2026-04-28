@@ -45,6 +45,7 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
   }
 
   try {
+    console.log(`[WhatsApp] Sending message to ${to}: "${message.substring(0, 50)}..."`);
     const response = await fetch(
       `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`,
       {
@@ -70,6 +71,7 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
       return false;
     }
 
+    console.log(`[WhatsApp] Message sent successfully to ${to}`);
     return true;
   } catch (error) {
     console.error("[WhatsApp] Network error:", error);

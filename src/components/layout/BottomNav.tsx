@@ -12,7 +12,7 @@ import { cn } from "../../lib/utils";
 import { useSession } from "next-auth/react";
 
 const NAV_ITEMS = [
-  { icon: Home, label: "Home", href: "/", roles: ["ADMIN"] },
+  { icon: Home, label: "Home", href: "/", roles: ["ADMIN", "CASHIER"] },
   { icon: LayoutGrid, label: "POS", href: "/pos", roles: ["ADMIN", "CASHIER", "WAITER"] },
   { icon: ChefHat, label: "Cocina", href: "/kitchen", roles: ["ADMIN", "CHEF"] },
   // Adding a Profile/Logout link for mobile since the sidebar is hidden

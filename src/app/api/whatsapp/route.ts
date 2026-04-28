@@ -239,8 +239,10 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
       });
     }
 
+    console.log(`[WhatsApp Bot] Processing with Gemini 2.5-flash for ${senderPhone}...`);
     const result = await chatSession.sendMessage(messageParts);
     const responseText = result.response.text();
+    console.log(`[WhatsApp Bot] Gemini response: ${responseText.substring(0, 100)}...`);
     let geminiResponse: any = null;
 
     try {
@@ -254,6 +256,7 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
     }
 
     if (!geminiResponse || !geminiResponse.intent || !geminiResponse.replyText) {
+      console.error("[WhatsApp Bot] Gemini response missing intent or replyText:", geminiResponse);
       return NextResponse.json({ received: true, error: "invalid_format" });
     }
 
@@ -269,6 +272,7 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
       where: { phone: senderPhone },
       data: { history: newHistory }
     });
+    console.log(`[WhatsApp Bot] History updated for ${senderPhone}`);
 
     // 6. Send Response to User via WhatsApp
     if (geminiResponse.intent === "send_menu") {

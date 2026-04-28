@@ -117,9 +117,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
-    if (status === "authenticated" && session.user.role !== "ADMIN") {
+    if (status === "authenticated") {
       if (session.user.role === "CHEF") router.push("/kitchen");
-      else router.push("/pos");
+      // Allow ADMIN and CASHIER to remain on dashboard
     }
   }, [status, session, router]);
 
@@ -141,7 +141,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (status === "authenticated" && session.user.role === "ADMIN") {
+    if (status === "authenticated" && (session.user.role === "ADMIN" || session.user.role === "CASHIER")) {
       fetchDashboard(selectedRange);
     }
   }, [status, session, selectedRange]);
