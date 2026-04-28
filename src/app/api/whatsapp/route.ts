@@ -68,9 +68,15 @@ export async function POST(req: Request) {
 
     const messageType = messageData.messageType || Object.keys(messageData.message || {})[0];
     let base64Media: string | null = null;
-    let mimeType: string = "image/jpeg";
-    const isImage = messageType === "imageMessage" || messageData.message?.imageMessage;
-    const isAudio = messageType === "audioMessage" || messageData.message?.audioMessage;    if (isImage || isAudio) {
+    let mimeType: string = "";
+    const isImage = messageType === "imageMessage" || !!messageData.message?.imageMessage;
+    const isAudio = messageType === "audioMessage" || !!messageData.message?.audioMessage;
+
+    if (isImage || isAudio) {
+      if (!mimeType) {
+        mimeType = isImage ? "image/jpeg" : "audio/ogg";
+      }
+
       const apiUrl = process.env.EVOLUTION_API_URL;
       const apiKey = process.env.EVOLUTION_API_KEY;
       const instanceName = process.env.EVOLUTION_INSTANCE_NAME;
@@ -105,18 +111,82 @@ export async function POST(req: Request) {
       }
     }
 
-    if (!remoteJid || (!messageText && !base64Media)) {
+    // --- START DEBOUNCING LOGIC ---
+    // 0. Save current message to buffer
+    await (prisma as any).whatsAppMessageBuffer.create({
+      data: {
+        phone: senderPhone,
+        content: messageText || null,
+        mimeType: mimeType || null,
+        base64: base64Media || null,
+      }
+    });
+
+    // 1. Try to acquire lock
+    // check if chat exists, if not create it
+    let chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
+    if (!chat) {
+      chat = await prisma.whatsAppChat.create({
+        data: { phone: senderPhone, history: [] }
+      });
+    }
+
+    if ((chat as any).isProcessing) {
+      console.log(`[WhatsApp Bot] Busy processing for ${senderPhone}. Buffering message.`);
       return NextResponse.json({ received: true });
     }
 
-    console.log(`[WhatsApp Bot] Message from ${pushName} (${senderPhone}): "${messageText}"${base64Media ? ` [Contains ${isImage ? 'Image' : 'Audio'}]` : ""}`);
+    // Attempt to set isProcessing = true (Atomic-ish)
+    const lockAcquired = await (prisma as any).whatsAppChat.updateMany({
+      where: { phone: senderPhone, isProcessing: false },
+      data: { isProcessing: true }
+    });
+
+    if (lockAcquired.count === 0) {
+      console.log(`[WhatsApp Bot] Lock collision for ${senderPhone}. Another instance won the race.`);
+      return NextResponse.json({ received: true });
+    }
+
+    // 2. Wait for more messages
+    console.log(`[WhatsApp Bot] Lock acquired for ${senderPhone}. Waiting 5s for more messages...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // 3. Collect ALL buffered messages
+    const bufferItems = await (prisma as any).whatsAppMessageBuffer.findMany({
+      where: { phone: senderPhone },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    // Clear buffer immediately
+    await (prisma as any).whatsAppMessageBuffer.deleteMany({
+      where: { phone: senderPhone }
+    });
+
+    // Concatenate all text and collect all media
+    let aggregatedText = "";
+    const aggregatedMedia: { base64: string, mime: string, type: 'image' | 'audio' }[] = [];
+
+    for (const item of bufferItems) {
+      if (item.content) aggregatedText += (aggregatedText ? " " : "") + item.content;
+      if (item.base64 && item.mimeType) {
+        aggregatedMedia.push({
+          base64: item.base64,
+          mime: item.mimeType,
+          type: item.mimeType.startsWith('image') ? 'image' : 'audio'
+        });
+      }
+    }
+
+    console.log(`[WhatsApp Bot] Aggregated content for ${senderPhone}: "${aggregatedText}" [Items: ${aggregatedMedia.length}]`);
+
+    // --- END DEBOUNCING LOGIC ---
 
     // Hidden reset command for testing
-    if (messageText.trim().toLowerCase() === "reiniciar") {
+    if (aggregatedText.trim().toLowerCase() === "reiniciar") {
        try {
            await (prisma as any).whatsAppChat.update({
              where: { phone: senderPhone },
-             data: { history: [] }
+             data: { history: [], isProcessing: false }
            });
            await sendWhatsAppMessage(remoteJid, "🔄 Memoria borrada con éxito. Empecemos de cero, dime en qué te puedo ayudar.");
        } catch(e) {}
@@ -126,6 +196,7 @@ export async function POST(req: Request) {
     // 0. Check Panic Mode
     const settings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
     if (settings?.isPanicModeActive) {
+      await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { isProcessing: false } });
       await sendWhatsAppMessage(remoteJid, "Actualmente tenemos muchos pedidos en cola. Te avisaremos apenas podamos tomar más pedidos. Gracias por tu comprensión. 🙏");
       return NextResponse.json({ received: true, status: "panic_mode_active" });
     }
@@ -140,30 +211,17 @@ export async function POST(req: Request) {
       `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')
     ).join('\n\n');
 
-    // 2. Load or Create Chat History (Force Fresh Daily Message)
-    let chat = await prisma.whatsAppChat.findUnique({
-      where: { phone: senderPhone }
-    });
-
+    // 2. Refresh Chat Record (Daily Reset Logic)
     const colombiaNow = new Date().toLocaleString("en-US", { timeZone: "America/Bogota" });
     const todayStr = new Date(colombiaNow).toDateString();
 
-    if (chat) {
-      const lastUpdateStr = new Date(chat.updatedAt.toLocaleString("en-US", { timeZone: "America/Bogota" })).toDateString();
-      if (lastUpdateStr !== todayStr) {
-        console.log(`[WhatsApp Bot] New day detected for ${senderPhone}. Resetting history.`);
-        chat = await prisma.whatsAppChat.update({
-          where: { phone: senderPhone },
-          data: { history: [] }
-        });
-      }
-    } else {
-      chat = await prisma.whatsAppChat.create({
-        data: { phone: senderPhone, history: [] }
-      });
+    let history: any[] = (chat?.history as any[]) || [];
+    const lastUpdateStr = new Date(chat.updatedAt.toLocaleString("en-US", { timeZone: "America/Bogota" })).toDateString();
+    
+    if (lastUpdateStr !== todayStr) {
+      console.log(`[WhatsApp Bot] New day detected for ${senderPhone}. Resetting history.`);
+      history = [];
     }
- 
-    const history: any[] = (chat?.history as any[]) || [];
 
     // 3. Prepare Gemini Prompt
     const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
@@ -243,15 +301,20 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
     });
 
     const messageParts: any[] = [];
-    if (messageText) messageParts.push({ text: messageText });
-    if (!messageText && base64Media && isImage) messageParts.push({ text: "El usuario ha enviado una imagen del comprobante de transferencia." });
-    if (!messageText && base64Media && isAudio) messageParts.push({ text: "El usuario ha enviado un mensaje de voz pidiendo algo." });
+    if (aggregatedText) messageParts.push({ text: aggregatedText });
     
-    if (base64Media) {
+    // Add all media items that were buffered
+    for (const media of aggregatedMedia) {
+      if (media.type === 'image') {
+        messageParts.push({ text: "[Imagen adjunta]" });
+      } else {
+        messageParts.push({ text: "El usuario ha enviado un mensaje de voz pidiendo algo." });
+      }
+      
       messageParts.push({
         inlineData: {
-          mimeType: mimeType,
-          data: base64Media
+          mimeType: media.mime,
+          data: media.base64
         }
       });
     }
@@ -286,7 +349,7 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
     }
 
     // 5. Save History
-    const historyUserText = messageText + (base64Media ? ` [Mensaje con ${isImage ? 'Imagen' : 'Audio'}]` : "");
+    const historyUserText = aggregatedText + (aggregatedMedia.length > 0 ? ` [Contenía ${aggregatedMedia.length} archivos multimedia]` : "");
     const newHistory = [
       ...history,
       { role: "user", text: historyUserText },
@@ -295,7 +358,10 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 
     await (prisma as any).whatsAppChat.update({
       where: { phone: senderPhone },
-      data: { history: newHistory }
+      data: { 
+        history: newHistory,
+        isProcessing: false // RELEASE LOCK
+      }
     });
     console.log(`[WhatsApp Bot] History updated for ${senderPhone}`);
 
@@ -322,7 +388,7 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 
       const orderData = geminiResponse.orderData;
       const deliveryFee = Number(orderData.deliveryFee) || 0;
-      let orderTotal = deliveryFee;
+      let orderTotal = 0; // START AT 0, NO DOMICILIO IN TOTAL!
 
       // Match items strictly with DB to get IDs and prices
       const validItems: { productId: number; sizeName: string; quantity: number; price: number; notes: string | null }[] = [];
@@ -419,6 +485,17 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 
   } catch (error: any) {
     console.error("[WhatsApp Webhook] General Error:", error);
+    // Attempt to release lock even on error so bot doesn't get stuck
+    try {
+      const remoteJid = (await req.clone().json()).data?.messages?.[0]?.key?.remoteJid;
+      const rawPhone = remoteJid?.replace(/@s.whatsapp.net|@g.us/, "");
+      if (rawPhone) {
+        await (prisma as any).whatsAppChat.updateMany({
+          where: { phone: normalizarNumero(rawPhone) },
+          data: { isProcessing: false }
+        });
+      }
+    } catch(e) {}
     return NextResponse.json({ received: true, error: error.message });
   }
 }

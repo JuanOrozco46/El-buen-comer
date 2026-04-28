@@ -185,8 +185,21 @@ model Expense {
 }
 
 model WhatsAppChat {
-  id        Int      @id @default(autoincrement())
-  phone     String   @unique
-  history   Json
-  updatedAt DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  phone        String   @unique
+  history      Json
+  isProcessing Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
 }
+
+model WhatsAppMessageBuffer {
+  id        Int      @id @default(autoincrement())
+  phone     String
+  content   String?  @db.Text
+  mimeType  String?
+  base64    String?  @db.LongText
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+}
+

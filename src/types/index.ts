@@ -65,6 +65,7 @@ export interface FullOrder {
   source: OrderSource;
   status: OrderStatus;
   total: number;
+  deliveryFee?: number | null;
   createdAt: Date | string;
   items: OrderItem[];
   payments?: Payment[];

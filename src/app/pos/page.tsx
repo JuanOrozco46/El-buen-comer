@@ -58,6 +58,10 @@ function POSPageContent() {
   const [cashModal, setCashModal] = useState<{ orderId: number; total: number } | null>(null);
   const [cashPaidWith, setCashPaidWith] = useState("");
 
+  // Invoice modal state
+  const [invoiceModal, setInvoiceModal] = useState<{ orderId: number; total: number } | null>(null);
+  const [invoiceData, setInvoiceData] = useState({ name: "", nit: "", address: "", phone: "" });
+
   // Effect 1: Panic Mode Polling
   useEffect(() => {
     const checkPanic = async () => {
@@ -143,6 +147,24 @@ function POSPageContent() {
     setTakeawayData(null);
     setEditOrderId(null);
     setViewStep('TABLE');
+  };
+
+  const openInvoiceModal = (orderId: number, total: number) => {
+    setInvoiceData({ name: "", nit: "", address: "", phone: "" });
+    setInvoiceModal({ orderId, total });
+  };
+
+  const handlePrintInvoice = () => {
+    if (!invoiceModal) return;
+    const { orderId } = invoiceModal;
+    const params = new URLSearchParams({
+      name: invoiceData.name,
+      nit: invoiceData.nit,
+      address: invoiceData.address,
+      phone: invoiceData.phone
+    });
+    window.open(`/pos/print/invoice/${orderId}?${params.toString()}`, '_blank');
+    setInvoiceModal(null);
   };
 
   const refreshOrders = async () => {
@@ -560,12 +582,20 @@ function POSPageContent() {
             {/* Shift Sales Dashboard */}
             {salesSummary.length > 0 ? (
               <div className="bg-white border-2 border-zinc-100 rounded-[40px] p-8 lg:p-12 shadow-sm">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
-                  <div>
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-2">Recaudación Total (Día Actual)</h3>
-                    <p className="text-4xl md:text-6xl font-black text-emerald-600 tracking-tighter">
-                      ${salesSummary.reduce((acc: any, s: any) => acc + s.total, 0).toLocaleString()}
-                    </p>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-12 mb-12">
+                  <div className="flex flex-col md:flex-row gap-12 lg:gap-24">
+                    <div>
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-2">Ventas Netas (Caja)</h3>
+                      <p className="text-4xl md:text-6xl font-black text-emerald-600 tracking-tighter">
+                        ${salesSummary.reduce((acc: any, s: any) => acc + s.total, 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="pt-2 md:pt-0 border-t md:border-t-0 md:border-l border-zinc-100 md:pl-12">
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-2">Recaudo Domicilios</h3>
+                      <p className="text-2xl md:text-4xl font-black text-orange-500 tracking-tighter">
+                        ${salesSummary.reduce((acc: any, s: any) => acc + (s.deliveryFees || 0), 0).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
                   <button 
                     onClick={refreshOrders}
@@ -578,14 +608,22 @@ function POSPageContent() {
                 <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-6 px-2">Desglose por Mesero</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {salesSummary.map((userSum: any) => (
-                    <div key={userSum.id} className="flex items-center gap-4 bg-zinc-50 p-5 rounded-[32px] border border-zinc-100 shadow-sm transition-all hover:scale-[1.02]">
-                      <div className="w-14 h-14 bg-white shadow-sm text-zinc-600 rounded-2xl flex items-center justify-center font-black text-lg shrink-0">
-                        {userSum.name.charAt(0)}
+                    <div key={userSum.id} className="flex flex-col gap-3 bg-zinc-50 p-6 rounded-[32px] border border-zinc-100 shadow-sm transition-all hover:scale-[1.02]">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white shadow-sm text-zinc-600 rounded-2xl flex items-center justify-center font-black text-lg shrink-0">
+                          {userSum.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 truncate leading-none mb-1.5">{userSum.name}</p>
+                          <p className="text-lg font-black text-zinc-900 leading-none">${userSum.total.toLocaleString()}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 truncate leading-none mb-1.5">{userSum.name}</p>
-                        <p className="text-xl font-black text-zinc-900 leading-none">${userSum.total.toLocaleString()}</p>
-                      </div>
+                      {(userSum.deliveryFees || 0) > 0 && (
+                        <div className="mt-2 pt-3 border-t border-zinc-200/50 flex justify-between items-center">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Domicilios</span>
+                          <span className="text-[11px] font-black text-orange-600">+${userSum.deliveryFees.toLocaleString()}</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -658,12 +696,32 @@ function POSPageContent() {
                     </ul>
 
                     <div className="border-t border-zinc-100 pt-4 mt-auto">
-                      <p className="text-xl lg:text-2xl font-black text-orange-600 mb-4">${Number(order.total).toLocaleString()}</p>
+                      <div className="flex justify-between items-end mb-4">
+                        <div>
+                          <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Total a Cobrar</p>
+                          <p className="text-xl lg:text-3xl font-black text-orange-600 leading-none">
+                            ${(Number(order.total) + Number(order.deliveryFee || 0)).toLocaleString()}
+                          </p>
+                        </div>
+                        {(order.deliveryFee || 0) > 0 && (
+                          <div className="text-right">
+                             <p className="text-[8px] font-bold text-zinc-400 uppercase">Flete inc.</p>
+                             <p className="text-xs font-black text-zinc-500">${Number(order.deliveryFee).toLocaleString()}</p>
+                          </div>
+                        )}
+                      </div>
 
                       <div className="grid grid-cols-2 gap-2 text-white font-black text-[10px] uppercase tracking-widest">
-                        <button onClick={() => openCashModal(order.id, Number(order.total))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
+                        <button onClick={() => openCashModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
                         <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
-                        <button onClick={() => openSplitModal(order.id, Number(order.total))} className="col-span-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir Pago</button>
+                        <button 
+                          onClick={() => openInvoiceModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))}
+                          className="col-span-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 p-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                           <Printer size={14} className="text-zinc-400" />
+                           Factura Personalizada
+                        </button>
+                        <button onClick={() => openSplitModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))} className="col-span-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir Pago</button>
                       </div>
                     </div>
                   </div>
@@ -841,6 +899,85 @@ function POSPageContent() {
               >
                 Omitir
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Personalized Invoice Modal */}
+      {invoiceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-6 animate-in fade-in zoom-in-95">
+          <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-8 border-b border-zinc-100 flex justify-between items-center bg-zinc-900 text-white">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-zinc-800 text-orange-500 rounded-2xl">
+                  <Printer size={24} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black">Factura Personalizada</h3>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Orden #{invoiceModal.orderId}</p>
+                </div>
+              </div>
+              <button onClick={() => setInvoiceModal(null)} className="p-3 bg-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition-all">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-2">Nombre o Razón Social</label>
+                <input
+                  type="text"
+                  value={invoiceData.name}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, name: e.target.value })}
+                  placeholder="Ej: Juan Perez o Empresa S.A.S"
+                  className="w-full bg-zinc-50 border-2 border-zinc-100 rounded-2xl px-5 py-4 font-bold text-zinc-900 focus:border-zinc-900 focus:ring-0 outline-none transition-all placeholder:text-zinc-300"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-2">NIT o Cédula</label>
+                <input
+                  type="text"
+                  value={invoiceData.nit}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, nit: e.target.value })}
+                  placeholder="123.456.789-0"
+                  className="w-full bg-zinc-50 border-2 border-zinc-100 rounded-2xl px-5 py-4 font-bold text-zinc-900 focus:border-zinc-900 focus:ring-0 outline-none transition-all placeholder:text-zinc-300"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-2">Dirección</label>
+                <input
+                  type="text"
+                  value={invoiceData.address}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, address: e.target.value })}
+                  placeholder="Calle 123 #45-67"
+                  className="w-full bg-zinc-50 border-2 border-zinc-100 rounded-2xl px-5 py-4 font-bold text-zinc-900 focus:border-zinc-900 focus:ring-0 outline-none transition-all placeholder:text-zinc-300"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-2">Teléfono</label>
+                <input
+                  type="text"
+                  value={invoiceData.phone}
+                  onChange={(e) => setInvoiceData({ ...invoiceData, phone: e.target.value })}
+                  placeholder="312 456 7890"
+                  className="w-full bg-zinc-50 border-2 border-zinc-100 rounded-2xl px-5 py-4 font-bold text-zinc-900 focus:border-zinc-900 focus:ring-0 outline-none transition-all placeholder:text-zinc-300"
+                />
+              </div>
+
+              <div className="pt-6">
+                <button
+                  onClick={handlePrintInvoice}
+                  disabled={!invoiceData.name || !invoiceData.nit}
+                  className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-black py-5 rounded-3xl uppercase tracking-widest text-xs transition-all active:scale-95 disabled:opacity-30 flex items-center justify-center gap-3 shadow-xl shadow-zinc-900/20"
+                >
+                  Generar e Imprimir Factura
+                  <Printer size={18} />
+                </button>
+              </div>
             </div>
           </div>
         </div>

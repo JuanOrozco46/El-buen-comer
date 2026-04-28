@@ -37,7 +37,7 @@ export async function GET(req: Request) {
     });
 
     // Group by cashier
-    const summaryMap: Record<number, { id: number, name: string, total: number }> = {};
+    const summaryMap: Record<number, { id: number, name: string, total: number, deliveryFees: number }> = {};
 
     orders.forEach((order: any) => {
       const uId = order.userId;
@@ -45,10 +45,12 @@ export async function GET(req: Request) {
         summaryMap[uId] = { 
           id: uId, 
           name: order.user?.name || "Usuario Desconocido", 
-          total: 0 
+          total: 0,
+          deliveryFees: 0
         };
       }
       summaryMap[uId].total += Number(order.total);
+      summaryMap[uId].deliveryFees += Number(order.deliveryFee || 0);
     });
 
     return NextResponse.json(Object.values(summaryMap));
