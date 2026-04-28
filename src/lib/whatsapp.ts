@@ -157,16 +157,13 @@ export async function sendWhatsAppMedia(to: string, mediaUrl?: string, caption?:
         },
         body: JSON.stringify({
           number: to,
+          mediatype: "image",
+          mimetype: "image/jpeg",
+          caption: caption || "",
+          media: finalUrl,
           options: {
             delay: 500,
             presence: "composing",
-          },
-          mediaMessage: {
-            mediatype: "image",
-            caption: caption || "",
-            image: { 
-              url: finalUrl 
-            }
           }
         }),
       }
