@@ -140,16 +140,30 @@ export async function POST(req: Request) {
       `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')
     ).join('\n\n');
 
-    // 2. Load or create chat history
-    let chatRecord = await (prisma as any).whatsAppChat.findUnique({ where: { phone: senderPhone } });
-    let history: any[] = [];
-    if (chatRecord && chatRecord.history) {
-      history = chatRecord.history as any[];
+    // 2. Load or Create Chat History (Force Fresh Daily Message)
+    let chat = await prisma.whatsAppChat.findUnique({
+      where: { phone: senderPhone }
+    });
+
+    const colombiaNow = new Date().toLocaleString("en-US", { timeZone: "America/Bogota" });
+    const todayStr = new Date(colombiaNow).toDateString();
+
+    if (chat) {
+      const lastUpdateStr = new Date(chat.updatedAt.toLocaleString("en-US", { timeZone: "America/Bogota" })).toDateString();
+      if (lastUpdateStr !== todayStr) {
+        console.log(`[WhatsApp Bot] New day detected for ${senderPhone}. Resetting history.`);
+        chat = await prisma.whatsAppChat.update({
+          where: { phone: senderPhone },
+          data: { history: [] }
+        });
+      }
     } else {
-      chatRecord = await (prisma as any).whatsAppChat.create({
+      chat = await prisma.whatsAppChat.create({
         data: { phone: senderPhone, history: [] }
       });
     }
+ 
+    const history: any[] = (chat?.history as any[]) || [];
 
     // 3. Prepare Gemini Prompt
     const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
@@ -176,16 +190,17 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
 1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez, DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si el cliente PIDE VER EL MENÚ / LA CARTA, usa el intent "send_menu" y una respuesta breve.
 2. **BREVEDAD**: Excepto el saludo, tus respuestas deben ser LO MÁS CORTAS Y DIRECTAS POSIBLE. Evita cortesía excesiva o explicaciones largas.
 3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
-3. **RECOLECCIÓN DE DATOS**: Cuando el cliente defina el tamaño y pedido, dile EXACTAMENTE: "Listo confirmanos Nombre, Telefono, Direccion, Efectivo, transferencia o dividido". (Nota: Pregunta si es para Domicilio o Pasar a Recoger).
-4. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
-5. **CIERRE CON EFECTIVO**: Si el pago incluye Efectivo, al crear el 'order' despídete EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
-6. **CIERRE CON TRANSFERENCIA**: Si el pago es todo o en parte por Nequi/Transferencia, dile EXACTAMENTE: "El total son [TOTAL], porfavor enviar el comprobante para verificar y tu pedido sera tomado en cuenta." ESPERA A QUE ENVÍEN LA IMAGEN. Cuando el cliente envíe la captura, VALÍDALA visualmente (Fecha hoy, Valor exacto) y si todo está correcto, ciérralo usando el intent "order".
-7. **TIEMPOS DE ENTREGA (Obligatorio en todos los "order")**:
+4. **RECOLECCIÓN DE DATOS**: Cuando el cliente defina el tamaño y pedido, revisa el historial para ver si ya dio sus datos. Si NO los tienes, dile EXACTAMENTE: "Listo confirmanos Nombre, Telefono, Direccion, Efectivo, transferencia o dividido". (Nota: Pregunta si es para Domicilio o Pasar a Recoger). Si YA los tienes, procede directamente al cierre.
+5. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
+6. **CIERRE CON EFECTIVO**: Si el pago incluye Efectivo, al crear el 'order' despídete EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
+7. **CIERRE CON TRANSFERENCIA**: Si el pago es todo o en parte por Nequi/Transferencia, dile EXACTAMENTE: "El total son [TOTAL], porfavor enviar el comprobante para verificar y tu pedido sera tomado en cuenta." ESPERA A QUE ENVÍEN LA IMAGEN. Cuando el cliente envíe la captura, VALÍDALA visualmente (Fecha hoy, Valor exacto) e intenta procesar el intent "order".
+8. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó en mensajes anteriores del chat. Usa esa información para llenar el JSON de orderData.
+9. **TIEMPOS DE ENTREGA (Obligatorio en todos los "order")**:
    - Si es domicilio, al final añade: "Su pedido demorara 50-60 minutos aproximadamente."
    - Si es recoger, al final añade: "Puedes pasar en unos 20-30 minutos aproximadamente."
-8. **NOTAS POR PLATO**: Si piden retirar o agregar algo a un plato particular (ej. "sin cebolla"), SIEMPRE ponlo en la propiedad "notes" del item.
-9. **CAMBIO DE PEDIDO**: Si el cliente cambia su pedido en medio del chat, ajusta mentalmente la orden sin problema.
-10. **DIRECCIÓN**: Aunque preguntemos "Direccion", si el cliente solo da un barrio (como es costumbre en Buenaventura), acéptalo sin exigir calles exactas.
+10. **NOTAS POR PLATO**: Si piden retirar o agregar algo a un plato particular (ej. "sin cebolla"), SIEMPRE ponlo en la propiedad "notes" del item.
+11. **CAMBIO DE PEDIDO**: Si el cliente cambia su pedido en medio del chat, ajusta mentalmente la orden sin problema.
+12. **DIRECCIÓN**: Aunque preguntemos "Direccion", si el cliente solo da un barrio (como es costumbre en Buenaventura), acéptalo sin exigir calles exactas.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 TU RESPUESTA SIEMPRE DEBE SER UN SÓLO OBJETO JSON VÁLIDO. NO ESCRIBAS TEXTO FUERA DEL JSON.
@@ -275,7 +290,7 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
       ...history,
       { role: "user", text: historyUserText },
       { role: "model", text: JSON.stringify(geminiResponse) }
-    ].slice(-10); // keep last 10 messages
+    ].slice(-50); // keep last 50 messages (daily context)
 
     await (prisma as any).whatsAppChat.update({
       where: { phone: senderPhone },
