@@ -182,7 +182,8 @@ export async function POST(req: Request) {
     // --- END DEBOUNCING LOGIC ---
 
     // Hidden reset command for testing
-    if (aggregatedText.trim().toLowerCase() === "reiniciar") {
+    const resetKeywords = ["reiniciar", "reset", "borrar memoria", "limpiar chat"];
+    if (resetKeywords.includes(aggregatedText.trim().toLowerCase())) {
        try {
            await (prisma as any).whatsAppChat.update({
              where: { phone: senderPhone },
@@ -238,11 +239,14 @@ PRECIOS DE DOMICILIO POR BARRIO:
 - Éxito, Triunfo, Nueva Grana, Brisas Del Mar: $7.000
 - Colinas C.: $8.000
 
-CAPACIDAD POR TAMAÑO:
-- Personal: Para 1 persona.
-- Duo: Para 2 o 3 personas.
-- Familiar: Para 4 o 5 personas.
 - Super familiar: Para 6 o 7 personas.
+ 
+ CÁLCULO DE TOTALES (REGLA DE ORO):
+ - Suma el precio de CADA producto según su tamaño.
+ - Suma el costo de domicilio según el barrio.
+ - El TOTAL final que menciones debe ser la suma EXACTA de (Productos + Domicilio).
+ - NO inventes precios. Si un producto no está en la lista, díselo al cliente.
+ - Muestra siempre el desglose si el cliente lo pide.
 
 REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
 1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez, DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si el cliente PIDE VER EL MENÚ / LA CARTA, usa el intent "send_menu" y una respuesta breve.
@@ -251,8 +255,14 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
 4. **RECOLECCIÓN DE DATOS**: Cuando el cliente defina el tamaño y pedido, revisa el historial para ver si ya dio sus datos. Si NO los tienes, dile EXACTAMENTE: "Listo confirmanos Nombre, Telefono, Direccion, Efectivo, transferencia o dividido". (Nota: Pregunta si es para Domicilio o Pasar a Recoger). Si YA los tienes, procede directamente al cierre.
 5. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
 6. **CIERRE CON EFECTIVO**: Si el pago incluye Efectivo, al crear el 'order' despídete EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
-7. **CIERRE CON TRANSFERENCIA**: Si el pago es todo o en parte por Nequi/Transferencia, dile EXACTAMENTE: "El total son [TOTAL], porfavor enviar el comprobante para verificar y tu pedido sera tomado en cuenta." ESPERA A QUE ENVÍEN LA IMAGEN. Cuando el cliente envíe la captura, VALÍDALA visualmente (Fecha hoy, Valor exacto) e intenta procesar el intent "order".
-8. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó en mensajes anteriores del chat. Usa esa información para llenar el JSON de orderData.
+7. **CIERRE CON TRANSFERENCIA**: Si el pago es todo o en parte por Nequi/Transferencia, dile EXACTAMENTE: "El total son [TOTAL]. Por favor realizar transferencia al Nequi 3173941189 o a la llave @nequilui57354. Envía el comprobante por este medio para verificar y procesar tu pedido inmediatamente."
+8. **VALIDACIÓN DE COMPROBANTES (IMÁGENES)**: Cuando el cliente envíe una captura de pantalla de transferencia, DEBES analizarla cuidadosamente y verificar:
+    - **Valor**: Debe coincidir exactamente con el total del pedido (+ domicilio).
+    - **Destino**: Debe ser el Nequi 3173941189 o la llave @nequilui57354 (ignora mayúsculas/minúsculas).
+    - **Fecha**: Debe ser la fecha de hoy (${currentDate}).
+    - Si la imagen es válida y el total coincide, usa el intent "order".
+    - Si la imagen NO es válida o el valor es menor, informa el error específico al cliente amablemente.
+9. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó en mensajes anteriores del chat. Usa esa información para llenar el JSON de orderData.
 9. **TIEMPOS DE ENTREGA (Obligatorio en todos los "order")**:
    - Si es domicilio, al final añade: "Su pedido demorara 50-60 minutos aproximadamente."
    - Si es recoger, al final añade: "Puedes pasar en unos 20-30 minutos aproximadamente."
