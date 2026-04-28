@@ -910,3 +910,15 @@ function POSPageContent() {
     </div>
   );
 }
+
+export default function POSPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center bg-zinc-50">
+        <Loader2 className="animate-spin text-orange-500" size={48} />
+      </div>
+    }>
+      <POSPageContent />
+    </Suspense>
+  );
+}
