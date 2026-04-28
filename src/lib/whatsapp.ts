@@ -126,3 +126,53 @@ export function formatMenuMessage(
     `\n\n_Para pedir, escribe el nombre del plato y el tamaño._\n_Ej: "Arroz con Pollo Personal"_`
   );
 }
+/**
+ * Sends a media message (image) to a WhatsApp number via the Evolution API.
+ * @param to - Phone number or JID
+ * @param mediaUrl - URL of the image to send
+ * @param caption - Optional caption
+ */
+export async function sendWhatsAppMedia(to: string, mediaUrl: string, caption?: string): Promise<boolean> {
+  if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE_NAME) {
+    console.warn("[WhatsApp] Missing API credentials for media. Message not sent.");
+    return false;
+  }
+
+  try {
+    console.log(`[WhatsApp] Sending media to ${to}: ${mediaUrl}`);
+    const response = await fetch(
+      `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": EVOLUTION_API_KEY,
+        },
+        body: JSON.stringify({
+          number: to,
+          options: {
+            delay: 500,
+            presence: "composing",
+          },
+          mediaMessage: {
+            mediatype: "image",
+            caption: caption || "",
+            media: mediaUrl
+          }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error("[WhatsApp] Media API error:", response.status, errorBody);
+      return false;
+    }
+
+    console.log(`[WhatsApp] Media sent successfully to ${to}`);
+    return true;
+  } catch (error) {
+    console.error("[WhatsApp] Media network error:", error);
+    return false;
+  }
+}

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { sendWhatsAppMessage, formatOrderConfirmation, formatMenuMessage, normalizarNumero } from "../../../lib/whatsapp";
+import { sendWhatsAppMessage, formatOrderConfirmation, formatMenuMessage, normalizarNumero, sendWhatsAppMedia } from "../../../lib/whatsapp";
 
 /**
  * GET /api/whatsapp
@@ -285,39 +285,14 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 
     // 6. Send Response to User via WhatsApp
     if (geminiResponse.intent === "send_menu") {
-       console.log(`[WhatsApp Bot] Intent: send_menu detected. Sending media...`);
-       const apiUrl = process.env.EVOLUTION_API_URL;
-       const apiKey = process.env.EVOLUTION_API_KEY;
-       const instanceName = process.env.EVOLUTION_INSTANCE_NAME;
-       if (apiUrl && apiKey && instanceName) {
-          try {
-             const mediaRes = await fetch(`${apiUrl}/message/sendMedia/${instanceName}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "apikey": apiKey },
-                body: JSON.stringify({
-                   number: remoteJid,
-                   options: { delay: 500, presence: "composing" },
-                   mediaMessage: {
-                      mediatype: "image",
-                      caption: geminiResponse.replyText,
-                      media: "https://i.postimg.cc/yxk0bz65/Whats-App-Image-2026-04-24-at-3-05-45-PM.jpg"
-                   }
-                })
-             });
-             if (!mediaRes.ok) {
-                const errText = await mediaRes.text();
-                console.error("[WhatsApp] sendMedia failed:", mediaRes.status, errText);
-             } else {
-                console.log(`[WhatsApp Bot] Menu media sent successfully to ${remoteJid}`);
-             }
-          } catch(e) { 
-             console.error("[WhatsApp] Error sending menu media", e);
-          }
-       } else {
-          console.warn("[WhatsApp] Missing credentials for sendMedia.");
+       console.log(`[WhatsApp Bot] Intent: send_menu detected. Sending media to ${remoteJid}...`);
+       const mediaUrl = "https://i.postimg.cc/yxk0bz65/Whats-App-Image-2026-04-24-at-3-05-45-PM.jpg";
+       const success = await sendWhatsAppMedia(remoteJid || "", mediaUrl, geminiResponse.replyText);
+       if (!success) {
+          console.error("[WhatsApp Bot] Failed to send menu via sendWhatsAppMedia");
        }
     } else {
-       await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+       await sendWhatsAppMessage(remoteJid || "", geminiResponse.replyText);
     }
 
     // 7. If intent is order, create the Prisma order and deduct inventory
