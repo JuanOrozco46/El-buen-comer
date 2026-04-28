@@ -173,8 +173,9 @@ CAPACIDAD POR TAMAÑO:
 - Super familiar: Para 6 o 7 personas.
 
 REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
-1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola, interactúa por primera vez, o PIDE VER EL MENÚ / LA CARTA, DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola bienvenid@ al buen comer cuentanos que deseas ordenar." o una variante cordial si ya habías saludado.
-2. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale EXACTAMENTE: "¿Claro de que tamaño seria?".
+1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez, DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si el cliente PIDE VER EL MENÚ / LA CARTA, usa el intent "send_menu" y una respuesta breve.
+2. **BREVEDAD**: Excepto el saludo, tus respuestas deben ser LO MÁS CORTAS Y DIRECTAS POSIBLE. Evita cortesía excesiva o explicaciones largas.
+3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
 3. **RECOLECCIÓN DE DATOS**: Cuando el cliente defina el tamaño y pedido, dile EXACTAMENTE: "Listo confirmanos Nombre, Telefono, Direccion, Efectivo, transferencia o dividido". (Nota: Pregunta si es para Domicilio o Pasar a Recoger).
 4. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
 5. **CIERRE CON EFECTIVO**: Si el pago incluye Efectivo, al crear el 'order' despídete EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
@@ -209,7 +210,7 @@ ESTRUCTURA:
   }
 }
 
-Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICAMENTE cuando la orden esté completa (el cliente ya eligió productos, tamaños, cantidades, dio su dirección y aceptó el total con domicilio). Cuando uses "order", despídete cordialmente en replyText informando que su pedido va en camino y el total a pagar (productos + domicilio).`;
+Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" para enviar la carta. En replyText informa siempre del total final (productos + domicilio) al usar "order".`;
 
     // 4. Build chat context and run Gemini
     const chatSession = model.startChat({
@@ -276,12 +277,13 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
 
     // 6. Send Response to User via WhatsApp
     if (geminiResponse.intent === "send_menu") {
+       console.log(`[WhatsApp Bot] Intent: send_menu detected. Sending media...`);
        const apiUrl = process.env.EVOLUTION_API_URL;
        const apiKey = process.env.EVOLUTION_API_KEY;
        const instanceName = process.env.EVOLUTION_INSTANCE_NAME;
        if (apiUrl && apiKey && instanceName) {
           try {
-             await fetch(`${apiUrl}/message/sendMedia/${instanceName}`, {
+             const mediaRes = await fetch(`${apiUrl}/message/sendMedia/${instanceName}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "apikey": apiKey },
                 body: JSON.stringify({
@@ -294,8 +296,15 @@ Usa intent "chat" mientras conversas y tomas la orden. Usa intent "order" ÚNICA
                    }
                 })
              });
+             if (!mediaRes.ok) {
+                const errText = await mediaRes.text();
+                console.error("[WhatsApp] sendMedia failed:", mediaRes.status, errText);
+             } else {
+                console.log(`[WhatsApp Bot] Menu media sent successfully to ${remoteJid}`);
+             }
           } catch(e) { console.error("[WhatsApp] Error sending menu media", e); }
        } else {
+          console.warn("[WhatsApp] Missing credentials for sendMedia, falling back to text.");
           await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
        }
     } else {
