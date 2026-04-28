@@ -8,7 +8,8 @@ export async function GET(req: Request) {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const isNotAdmin = session.user.role !== 'ADMIN';
+    const role = session.user.role;
+    const isWaiter = role === "WAITER";
     const currentUserId = Number(session.user.id);
 
     // Calculate today's start in Colombia time (UTC-5)
@@ -22,8 +23,9 @@ export async function GET(req: Request) {
       createdAt: { gte: today }
     };
 
-    // For non-admins: always filter by their userId
-    if (isNotAdmin) {
+    // For waiters: always filter by their userId. 
+    // Cashiers and Admins can see the summary of all creators for today.
+    if (isWaiter) {
       where.userId = currentUserId;
     }
 
