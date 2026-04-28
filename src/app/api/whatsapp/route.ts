@@ -67,14 +67,14 @@ export async function POST(req: Request) {
       messageData.message?.videoMessage?.caption || "";
 
     const messageType = messageData.messageType || Object.keys(messageData.message || {})[0];
-    let base64Image: string | null = null;
+    let base64Media: string | null = null;
     let mimeType: string = "image/jpeg";
-
-    if (messageType === "imageMessage" || messageData.message?.imageMessage) {
+    const isImage = messageType === "imageMessage" || messageData.message?.imageMessage;
+    const isAudio = messageType === "audioMessage" || messageData.message?.audioMessage;    if (isImage || isAudio) {
       const apiUrl = process.env.EVOLUTION_API_URL;
       const apiKey = process.env.EVOLUTION_API_KEY;
       const instanceName = process.env.EVOLUTION_INSTANCE_NAME;
-
+ 
       if (apiUrl && apiKey && instanceName && messageData.key?.id) {
         try {
           const response = await fetch(`${apiUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
@@ -93,23 +93,23 @@ export async function POST(req: Request) {
           const data = await response.json();
           if (data && typeof data.base64 === "string") {
              let rawBase64 = data.base64;
-             const mimeMatch = rawBase64.match(/^data:(image\/\w+);base64,/);
+             const mimeMatch = rawBase64.match(/^data:([^;]+);base64,/);
              if (mimeMatch) {
                 mimeType = mimeMatch[1];
              }
-             base64Image = rawBase64.replace(/^data:image\/\w+;base64,/, "");
+             base64Media = rawBase64.replace(/^data:[^;]+;base64,/, "");
           }
         } catch (e) {
-             console.error("[WhatsApp Bot] Error fetching base64 for image:", e);
+             console.error(`[WhatsApp Bot] Error fetching base64 for ${isImage ? 'image' : 'audio'}:`, e);
         }
       }
     }
 
-    if (!remoteJid || (!messageText && !base64Image)) {
+    if (!remoteJid || (!messageText && !base64Media)) {
       return NextResponse.json({ received: true });
     }
 
-    console.log(`[WhatsApp Bot] Message from ${pushName} (${senderPhone}): "${messageText}"${base64Image ? " [Contains Image]" : ""}`);
+    console.log(`[WhatsApp Bot] Message from ${pushName} (${senderPhone}): "${messageText}"${base64Media ? ` [Contains ${isImage ? 'Image' : 'Audio'}]` : ""}`);
 
     // Hidden reset command for testing
     if (messageText.trim().toLowerCase() === "reiniciar") {
@@ -244,13 +244,14 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 
     const messageParts: any[] = [];
     if (messageText) messageParts.push({ text: messageText });
-    if (!messageText && base64Image) messageParts.push({ text: "El usuario ha enviado una imagen del comprobante de transferencia." });
+    if (!messageText && base64Media && isImage) messageParts.push({ text: "El usuario ha enviado una imagen del comprobante de transferencia." });
+    if (!messageText && base64Media && isAudio) messageParts.push({ text: "El usuario ha enviado un mensaje de voz pidiendo algo." });
     
-    if (base64Image) {
+    if (base64Media) {
       messageParts.push({
         inlineData: {
           mimeType: mimeType,
-          data: base64Image
+          data: base64Media
         }
       });
     }
@@ -285,7 +286,7 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
     }
 
     // 5. Save History
-    const historyUserText = messageText + (base64Image ? " [Imagen de comprobante adjunta]" : "");
+    const historyUserText = messageText + (base64Media ? ` [Mensaje con ${isImage ? 'Imagen' : 'Audio'}]` : "");
     const newHistory = [
       ...history,
       { role: "user", text: historyUserText },
