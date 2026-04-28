@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Product, ProductSize, CartItem, OrderSource, FullOrder, Table } from "../../types";
@@ -11,7 +11,7 @@ import { DeliveryModal } from "../../components/pos/DeliveryModal";
 import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, ChevronLeft, CheckCircle2, ShoppingBag } from "lucide-react";
 import { TakeawayModal } from "../../components/pos/TakeawayModal";
 
-export default function POSPage() {
+function POSPageContent() {
   const { data: session, status } = useSession();
   const [products, setProducts] = useState<Product[]>([]);
   const [pendingOrders, setPendingOrders] = useState<FullOrder[]>([]);
