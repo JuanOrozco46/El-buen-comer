@@ -261,6 +261,14 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
       return NextResponse.json({ received: true, error: "invalid_format" });
     }
 
+    // Force send_menu intent if keywords found in user message
+    const menuKeywords = ["menú", "menu", "carta", "la carta", "la carta", "el menú"];
+    const includesMenu = menuKeywords.some(kw => messageText.toLowerCase().includes(kw));
+    if (includesMenu && geminiResponse.intent === "chat") {
+      console.log(`[WhatsApp Bot] Forcing send_menu intent due to keywords in: "${messageText}"`);
+      geminiResponse.intent = "send_menu";
+    }
+
     // 5. Save History
     const historyUserText = messageText + (base64Image ? " [Imagen de comprobante adjunta]" : "");
     const newHistory = [
@@ -302,10 +310,11 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
              } else {
                 console.log(`[WhatsApp Bot] Menu media sent successfully to ${remoteJid}`);
              }
-          } catch(e) { console.error("[WhatsApp] Error sending menu media", e); }
+          } catch(e) { 
+             console.error("[WhatsApp] Error sending menu media", e);
+          }
        } else {
-          console.warn("[WhatsApp] Missing credentials for sendMedia, falling back to text.");
-          await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+          console.warn("[WhatsApp] Missing credentials for sendMedia.");
        }
     } else {
        await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
