@@ -14,6 +14,7 @@ export default function POSPage() {
   const { data: session, status } = useSession();
   const [products, setProducts] = useState<Product[]>([]);
   const [pendingOrders, setPendingOrders] = useState<FullOrder[]>([]);
+  const [salesSummary, setSalesSummary] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -134,10 +135,17 @@ export default function POSPage() {
   };
 
   const refreshOrders = async () => {
-    const ordRes = await fetch('/api/orders?status=active');
-    const oData = await ordRes.json();
-    if (Array.isArray(oData)) {
-      setPendingOrders(oData);
+    try {
+      const [ordRes, sumRes] = await Promise.all([
+        fetch('/api/orders?status=active'),
+        fetch('/api/orders/summary')
+      ]);
+      const oData = await ordRes.json();
+      const sData = await sumRes.json();
+      if (Array.isArray(oData)) setPendingOrders(oData);
+      if (Array.isArray(sData)) setSalesSummary(sData);
+    } catch (err) {
+      console.error("Refresh error:", err);
     }
   };
 
@@ -532,10 +540,27 @@ export default function POSPage() {
           )
         ) : (
           <section className="flex-1 overflow-y-auto p-4 lg:p-8 bg-zinc-50">
-            <h2 className="text-xl lg:text-2xl font-black mb-6 text-zinc-800 tracking-tight">
+            <h2 className="text-xl lg:text-2xl font-black mb-4 text-zinc-800 tracking-tight">
               Cuentas Abiertas
               <span className="ml-3 text-sm font-bold text-zinc-400">({pendingOrders.length} activas)</span>
             </h2>
+
+            {/* Sales Summary per Cashier */}
+            {salesSummary.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-6">
+                {salesSummary.map(userSum => (
+                  <div key={userSum.id} className="bg-white border-2 border-zinc-100 px-4 py-2 rounded-2xl flex items-center gap-3 shadow-sm">
+                    <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center font-black text-xs">
+                      {userSum.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400 leading-none mb-1">{userSum.name}</p>
+                      <p className="text-sm font-black text-zinc-900 leading-none">${userSum.total.toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {pendingOrders.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-zinc-400">
                 <ListOrdered size={64} className="opacity-20 mb-4" />
