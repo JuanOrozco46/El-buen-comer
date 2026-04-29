@@ -57,6 +57,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
+    // Ignore message reactions (emoji responses) - they are not real messages
+    if (messageData.message?.reactionMessage || messageData.messageType === "reactionMessage") {
+      console.log(`[WhatsApp Bot] Ignoring reaction message from ${messageData.key?.remoteJid}`);
+      return NextResponse.json({ received: true });
+    }
+
     const remoteJid = messageData.key?.remoteJid;
     const rawPhone = remoteJid?.replace(/@s.whatsapp.net|@g.us/, "");
     senderPhone = rawPhone ? normalizarNumero(rawPhone) : "Desconocido";
@@ -278,7 +284,7 @@ PRECIOS DE DOMICILIO POR BARRIO:
  - Muestra siempre el desglose si el cliente lo pide.
 
 REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
-1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez, DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si el cliente PIDE VER EL MENÚ / LA CARTA, usa el intent "send_menu" y una respuesta breve.
+1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez (historial completamente vacío), DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si el historial tiene la marca "PEDIDO_COMPLETADO" NO vuelvas a saludar. Si el cliente PIDE VER EL MENÚ / LA CARTA, usa el intent "send_menu" y una respuesta breve.
 2. **BREVEDAD (REGLA CRÍTICA)**: Tus respuestas deben ser EXTREMADAMENTE CORTAS. Máximo 1-2 líneas. NUNCA uses frases de cortesía como "¡Claro!", "¡Con gusto!", "Entendido, tomaré nota de eso". Si el cliente da información adicional (ej: "que llegue después de las 12"), responde solamente "Listo." o "Ok." y nada más. Si ya tienes todos los datos para el pedido, procede directamente sin agregar relleno.
 3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
 4. **RECOLECCIÓN DE DATOS**: Cuando el cliente defina el tamaño y pedido, revisa el historial para ver si ya dio sus datos. Si NO los tienes, dile EXACTAMENTE: "Listo confirmanos Nombre, Telefono, Direccion, Efectivo, transferencia o dividido". (Nota: Pregunta si es para Domicilio o Pasar a Recoger). Si YA los tienes, procede directamente al cierre.
@@ -446,6 +452,15 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
       const deliveryFee = Number(orderData.deliveryFee) || 0;
       let orderTotal = 0; // START AT 0, NO DOMICILIO IN TOTAL!
 
+      // Server-side validation: reject incomplete orders
+      const resolvedPhone = orderData.customerPhone || senderPhone;
+      if (!orderData.customerName || !resolvedPhone || resolvedPhone === "Desconocido") {
+        console.error(`[WhatsApp Bot] BLOCKED incomplete order - missing name or phone. Name: "${orderData.customerName}", Phone: "${resolvedPhone}"`);
+        // Ask gemini to re-collect missing data (don't create the order)
+        await sendWhatsAppMessage(remoteJid || "", "Necesito tu nombre y teléfono para confirmar el pedido.");
+        return NextResponse.json({ received: true, error: "incomplete_order_data" });
+      }
+
       // Match items strictly with DB to get IDs and prices
       const validItems: { productId: number; sizeName: string; quantity: number; price: number; notes: string | null }[] = [];
       for (const reqItem of orderData.items) {
@@ -525,10 +540,10 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
           return newOrder;
         });
 
-        // Clear chat history after successful order so they can start fresh next time
+        // Mark conversation as completed (don't fully wipe or bot will re-greet)
         await (prisma as any).whatsAppChat.update({
           where: { phone: senderPhone },
-          data: { history: [] }
+          data: { history: [{ role: "model", text: "PEDIDO_COMPLETADO" }] }
         });
 
         console.log(`[WhatsApp Bot] Order #${order.id} generated completely.`);
