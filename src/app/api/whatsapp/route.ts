@@ -35,6 +35,7 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
  * Webhook receiver for incoming WhatsApp messages from Evolution API.
  */
 export async function POST(req: Request) {
+  let senderPhone = "Desconocido";
   try {
     const body = await req.json();
     const event = body.event;
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
 
     const remoteJid = messageData.key?.remoteJid;
     const rawPhone = remoteJid?.replace(/@s.whatsapp.net|@g.us/, "");
-    const senderPhone = normalizarNumero(rawPhone);
+    senderPhone = rawPhone ? normalizarNumero(rawPhone) : "Desconocido";
     const pushName = messageData.pushName || "";
 
     const messageText = messageData.message?.conversation ||
@@ -66,24 +67,32 @@ export async function POST(req: Request) {
       messageData.message?.imageMessage?.caption ||
       messageData.message?.videoMessage?.caption || "";
 
-    const messageType = messageData.messageType || Object.keys(messageData.message || {})[0];
+    // Detección mejorada de medios (incluye mensajes efímeros)
+    const getMessage = (m: any) => {
+      if (m.message?.viewOnceMessage?.message) return m.message.viewOnceMessage.message;
+      if (m.message?.viewOnceMessageV2?.message) return m.message.viewOnceMessageV2.message;
+      return m.message;
+    };
+    const effectiveMessage = getMessage(messageData);
+
+    const isImage = !!(effectiveMessage?.imageMessage);
+    const isAudio = !!(effectiveMessage?.audioMessage);
+
     let base64Media: string | null = null;
     let mimeType: string = "";
-    const isImage = messageType === "imageMessage" || !!messageData.message?.imageMessage;
-    const isAudio = messageType === "audioMessage" || !!messageData.message?.audioMessage;
+    if (isImage) mimeType = "image/jpeg";
+    if (isAudio) mimeType = effectiveMessage.audioMessage.mimetype || "audio/ogg";
 
     if (isImage || isAudio) {
-      if (!mimeType) {
-        mimeType = isImage ? "image/jpeg" : "audio/ogg";
-      }
-
       const apiUrl = process.env.EVOLUTION_API_URL;
       const apiKey = process.env.EVOLUTION_API_KEY;
       const instanceName = process.env.EVOLUTION_INSTANCE_NAME;
  
       if (apiUrl && apiKey && instanceName && messageData.key?.id) {
         try {
-          const response = await fetch(`${apiUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+          console.log(`[WhatsApp Bot] Requesting base64 for ${isImage ? 'image' : 'audio'} message: ${messageData.key.id}`);
+          const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+          const response = await fetch(`${cleanUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -92,18 +101,27 @@ export async function POST(req: Request) {
             body: JSON.stringify({
               message: {
                 key: messageData.key,
-                message: messageData.message
+                message: effectiveMessage // Enviamos el mensaje efectivo (desenvolvedor de viewOnce)
               }
             })
           });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Evolution API Error: ${response.status} - ${errorText}`);
+          }
+
           const data = await response.json();
           if (data && typeof data.base64 === "string") {
+             console.log(`[WhatsApp Bot] Successfully retrieved base64 (${data.base64.length} chars)`);
              let rawBase64 = data.base64;
              const mimeMatch = rawBase64.match(/^data:([^;]+);base64,/);
              if (mimeMatch) {
                 mimeType = mimeMatch[1];
              }
              base64Media = rawBase64.replace(/^data:[^;]+;base64,/, "");
+          } else {
+             console.warn(`[WhatsApp Bot] API returned success but NO base64 field found`, data);
           }
         } catch (e) {
              console.error(`[WhatsApp Bot] Error fetching base64 for ${isImage ? 'image' : 'audio'}:`, e);
@@ -122,7 +140,7 @@ export async function POST(req: Request) {
       }
     });
 
-    // 1. Try to acquire lock
+    // 1. Try to acquire lock with TTL (1 minute)
     // check if chat exists, if not create it
     let chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
     if (!chat) {
@@ -131,25 +149,36 @@ export async function POST(req: Request) {
       });
     }
 
-    if ((chat as any).isProcessing) {
+    const ONE_MINUTE_AGOO = new Date(Date.now() - 60000);
+    
+    // Check if it's currently processing and NOT STALE
+    if ((chat as any).isProcessing && chat.updatedAt > ONE_MINUTE_AGOO) {
       console.log(`[WhatsApp Bot] Busy processing for ${senderPhone}. Buffering message.`);
       return NextResponse.json({ received: true });
     }
 
     // Attempt to set isProcessing = true (Atomic-ish)
+    // If it was processing but stale (updatedAt < ONE_MINUTE_AGOO), we override it
     const lockAcquired = await (prisma as any).whatsAppChat.updateMany({
-      where: { phone: senderPhone, isProcessing: false },
-      data: { isProcessing: true }
+      where: { 
+        phone: senderPhone, 
+        OR: [
+          { isProcessing: false },
+          { updatedAt: { lt: ONE_MINUTE_AGOO } }
+        ]
+      },
+      data: { isProcessing: true, updatedAt: new Date() }
     });
 
     if (lockAcquired.count === 0) {
-      console.log(`[WhatsApp Bot] Lock collision for ${senderPhone}. Another instance won the race.`);
+      console.log(`[WhatsApp Bot] Lock collision or busy for ${senderPhone}.`);
       return NextResponse.json({ received: true });
     }
 
-    // 2. Wait for more messages
-    console.log(`[WhatsApp Bot] Lock acquired for ${senderPhone}. Waiting 5s for more messages...`);
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    try {
+      // 2. Wait for more messages (Reduced to 3s to be safer on Vercel)
+      console.log(`[WhatsApp Bot] Lock acquired for ${senderPhone}. Waiting 3s for more messages...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
     // 3. Collect ALL buffered messages
     const bufferItems = await (prisma as any).whatsAppMessageBuffer.findMany({
@@ -492,20 +521,31 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
     }
 
     return NextResponse.json({ received: true, status: "processed" });
-
-  } catch (error: any) {
-    console.error("[WhatsApp Webhook] General Error:", error);
-    // Attempt to release lock even on error so bot doesn't get stuck
+  } finally {
+    // 8. Release lock even if something crashed
     try {
-      const remoteJid = (await req.clone().json()).data?.messages?.[0]?.key?.remoteJid;
-      const rawPhone = remoteJid?.replace(/@s.whatsapp.net|@g.us/, "");
-      if (rawPhone) {
-        await (prisma as any).whatsAppChat.updateMany({
-          where: { phone: normalizarNumero(rawPhone) },
-          data: { isProcessing: false }
-        });
-      }
-    } catch(e) {}
-    return NextResponse.json({ received: true, error: error.message });
+      await (prisma as any).whatsAppChat.update({
+        where: { phone: senderPhone },
+        data: { isProcessing: false }
+      });
+      console.log(`[WhatsApp Bot] Lock released for ${senderPhone}`);
+    } catch (e) {
+      console.error(`[WhatsApp Bot] Failed to release lock for ${senderPhone}:`, e);
+    }
   }
+} catch (error: any) {
+  console.error("[WhatsApp Webhook] General Error:", error);
+  
+  // Notify Admin about the error
+  const ADMIN_PHONE = "573223119008";
+  try {
+     const errorPrefix = "[⚠️ ALERT BOT]";
+     const errorMsg = `${errorPrefix}\n\nError detectado: ${error.message}\nCliente afectado: ${senderPhone || "Desconocido"}\n\nPor favor revisa el sistema.`;
+     await sendWhatsAppMessage(`${ADMIN_PHONE}@s.whatsapp.net`, errorMsg);
+  } catch(e) {
+     console.error("[WhatsApp Bot] Failed to notify admin:", e);
+  }
+
+  return NextResponse.json({ received: true, error: error.message });
+}
 }
