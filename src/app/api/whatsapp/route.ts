@@ -309,6 +309,7 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
     - Si el destinatario es correcto, responde ÚNICAMENTE: "Perfecto, comprobante recibido. ✅"
     - Si el destinatario es incorrecto, avísale amablemente.
     - NUNCA uses intent "order" en este caso. Siempre usa intent "chat".
+14. **ESTADO DEL PEDIDO**: Si el cliente pregunta "¿Dónde va el domicilio?", "¿Cuánto falta?", o cualquier duda sobre el tiempo de entrega una vez confirmado el pedido, responde únicamente: "Ya está en camino. ✅"
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 TU RESPUESTA SIEMPRE DEBE SER UN SÓLO OBJETO JSON VÁLIDO. NO ESCRIBAS TEXTO FUERA DEL JSON.

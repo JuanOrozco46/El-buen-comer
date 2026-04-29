@@ -24,7 +24,7 @@ function POSPageContent() {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
 
   // Tab control: 'NEW' for placing orders, 'PENDING' for cashing out, 'SUMMARY' for shift stats
-  const [viewMode, setViewMode] = useState<'NEW' | 'PENDING' | 'SUMMARY'>('NEW');
+  const [viewMode, setViewMode] = useState<'NEW' | 'PENDING' | 'DELIVERY' | 'SUMMARY'>('NEW');
   
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -445,9 +445,20 @@ function POSPageContent() {
                     className={`px-4 lg:px-6 py-2 rounded-xl transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] ${viewMode === 'PENDING' ? 'bg-white shadow-sm text-emerald-600' : 'text-zinc-400'}`}
                   >
                     <ListOrdered size={14} /> <span className="hidden sm:inline">Cuentas</span>
-                    {pendingOrders.length > 0 && (
+                    {pendingOrders.filter(o => o.source === 'POS' || o.source === 'TAKEAWAY').length > 0 && (
                       <span className="bg-zinc-950 text-white text-[9px] font-black rounded-full w-5 h-5 flex items-center justify-center">
-                        {pendingOrders.length}
+                        {pendingOrders.filter(o => o.source === 'POS' || o.source === 'TAKEAWAY').length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setViewMode('DELIVERY')}
+                    className={`px-4 lg:px-6 py-2 rounded-xl transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] ${viewMode === 'DELIVERY' ? 'bg-white shadow-sm text-blue-600' : 'text-zinc-400'}`}
+                  >
+                    <ShoppingBag size={14} /> <span className="hidden sm:inline">Domicilios</span>
+                    {pendingOrders.filter(o => o.source === 'DELIVERY' || o.source === 'WHATSAPP').length > 0 && (
+                      <span className="bg-zinc-950 text-white text-[9px] font-black rounded-full w-5 h-5 flex items-center justify-center">
+                        {pendingOrders.filter(o => o.source === 'DELIVERY' || o.source === 'WHATSAPP').length}
                       </span>
                     )}
                   </button>
@@ -638,98 +649,117 @@ function POSPageContent() {
         ) : (
           <section className="flex-1 overflow-y-auto p-4 lg:p-8 bg-zinc-50">
             <h2 className="text-xl lg:text-2xl font-black mb-4 text-zinc-800 tracking-tight">
-              Cuentas Abiertas
-              <span className="ml-3 text-sm font-bold text-zinc-400">({pendingOrders.length} activas)</span>
+              {viewMode === 'PENDING' ? 'Cuentas Abiertas' : 'Domicilios Activos'}
+              <span className="ml-3 text-sm font-bold text-zinc-400">
+                ({pendingOrders.filter(o => viewMode === 'PENDING' ? (o.source === 'POS' || o.source === 'TAKEAWAY') : (o.source === 'DELIVERY' || o.source === 'WHATSAPP')).length} activas)
+              </span>
             </h2>
 
-            {pendingOrders.length === 0 ? (
+            {pendingOrders.filter(o => viewMode === 'PENDING' ? (o.source === 'POS' || o.source === 'TAKEAWAY') : (o.source === 'DELIVERY' || o.source === 'WHATSAPP')).length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-zinc-400">
                 <ListOrdered size={64} className="opacity-20 mb-4" />
-                <p className="font-bold uppercase tracking-widest text-xs">No hay cuentas abiertas</p>
+                <p className="font-bold uppercase tracking-widest text-xs">
+                  {viewMode === 'PENDING' ? 'No hay cuentas abiertas' : 'No hay domicilios activos'}
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
-                {pendingOrders.map(order => (
-                  <div key={order.id} className="bg-white border border-zinc-200 rounded-3xl p-5 lg:p-6 shadow-sm flex flex-col">
-                    <div className="flex justify-between items-center mb-4">
-                      <div>
-                        <span className="font-black text-[10px] text-zinc-400 tracking-widest uppercase">Orden #{order.id}</span>
-                        {order.customerName && (
-                          <p className="text-xs font-bold text-zinc-700 mt-0.5">{order.customerName}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => window.open(`/pos/print/kitchen/${order.id}`, '_blank')}
-                          title="Imprimir Comanda Cocina"
-                          className="p-2 bg-zinc-100 text-zinc-500 hover:bg-orange-100 hover:text-orange-600 rounded-xl transition-all"
-                        >
-                          <ChefHat size={16} />
-                        </button>
-                        <button
-                          onClick={() => window.open(`/pos/print/receipt/${order.id}`, '_blank')}
-                          title="Imprimir Pre-cuenta"
-                          className="p-2 bg-zinc-100 text-zinc-500 hover:bg-emerald-100 hover:text-emerald-600 rounded-xl transition-all"
-                        >
-                          <Printer size={16} />
-                        </button>
-                        <span className="px-2 py-1 bg-amber-100 text-amber-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                          {order.source === 'DELIVERY' ? 'DOMICILIO' : order.source === 'TAKEAWAY' ? 'PARA LLEVAR' : order.source || 'POS'}
-                        </span>
-                        <button
-                          onClick={() => deleteOrder(order.id)}
-                          title="Eliminar Orden"
-                          className="p-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-xl transition-all"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <ul className="mb-6 space-y-2 flex-1">
-                      {order.items.map((i: any) => (
-                        <li key={i.id} className="text-xs font-bold text-zinc-700 leading-snug flex justify-between">
-                          <span className="line-clamp-1">{i.quantity}x {i.product.name} <span className="text-zinc-400">({i.sizeName})</span></span>
-                          <span className="shrink-0 ml-2">${Number(i.price).toLocaleString()}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <div className="border-t border-zinc-100 pt-4 mt-auto">
-                      <div className="flex justify-between items-end mb-4">
+                {pendingOrders
+                  .filter(o => viewMode === 'PENDING' ? (o.source === 'POS' || o.source === 'TAKEAWAY') : (o.source === 'DELIVERY' || o.source === 'WHATSAPP'))
+                  .map(order => (
+                    <div key={order.id} className="bg-white border border-zinc-200 rounded-3xl p-5 lg:p-6 shadow-sm flex flex-col">
+                      <div className="flex justify-between items-center mb-4">
                         <div>
-                          <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Total a Cobrar</p>
-                          <p className="text-xl lg:text-3xl font-black text-orange-600 leading-none">
-                            ${(Number(order.total) + Number(order.deliveryFee || 0)).toLocaleString()}
-                          </p>
+                          <span className="font-black text-[10px] text-zinc-400 tracking-widest uppercase">Orden #{order.id}</span>
+                          {order.customerName && (
+                            <p className="text-xs font-bold text-zinc-700 mt-0.5">{order.customerName}</p>
+                          )}
                         </div>
-                        {(order.deliveryFee || 0) > 0 && (
-                          <div className="text-right">
-                             <p className="text-[8px] font-bold text-zinc-400 uppercase">Flete inc.</p>
-                             <p className="text-xs font-black text-zinc-500">${Number(order.deliveryFee).toLocaleString()}</p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => window.open(`/pos/print/kitchen/${order.id}`, '_blank')}
+                            title="Imprimir Comanda Cocina"
+                            className="p-2 bg-zinc-100 text-zinc-500 hover:bg-orange-100 hover:text-orange-600 rounded-xl transition-all"
+                          >
+                            <ChefHat size={16} />
+                          </button>
+                          <button
+                            onClick={() => window.open(`/pos/print/receipt/${order.id}`, '_blank')}
+                            title="Imprimir Pre-cuenta"
+                            className="p-2 bg-zinc-100 text-zinc-500 hover:bg-emerald-100 hover:text-emerald-600 rounded-xl transition-all"
+                          >
+                            <Printer size={16} />
+                          </button>
+                          <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                            order.source === 'WHATSAPP' ? 'bg-green-100 text-green-600' :
+                            order.source === 'DELIVERY' ? 'bg-amber-100 text-amber-600' :
+                            order.source === 'TAKEAWAY' ? 'bg-blue-100 text-blue-600' : 'bg-zinc-100 text-zinc-600'
+                          }`}>
+                            {order.source === 'WHATSAPP' ? 'WHATSAPP' : 
+                             order.source === 'DELIVERY' ? 'DOMICILIO' : 
+                             order.source === 'TAKEAWAY' ? 'PARA LLEVAR' : order.source || 'POS'}
+                          </span>
+                          <button
+                            onClick={() => deleteOrder(order.id)}
+                            title="Eliminar Orden"
+                            className="p-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-xl transition-all"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <ul className="mb-6 space-y-2 flex-1">
+                        {order.items.map((i: any) => (
+                          <li key={i.id} className="text-xs font-bold text-zinc-700 leading-snug flex justify-between">
+                            <span className="line-clamp-1">{i.quantity}x {i.product.name} <span className="text-zinc-400">({i.sizeName})</span></span>
+                            <span className="shrink-0 ml-2">${Number(i.price).toLocaleString()}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      <div className="border-t border-zinc-100 pt-4 mt-auto">
+                        {order.customerPhone && (
+                          <div className="flex items-center gap-2 mb-3 text-zinc-500">
+                             <Smartphone size={14} />
+                             <span className="text-[10px] font-bold">{order.customerPhone}</span>
                           </div>
                         )}
-                      </div>
+                        <div className="flex justify-between items-end mb-4">
+                          <div>
+                            <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Total a Cobrar</p>
+                            <p className="text-xl lg:text-3xl font-black text-orange-600 leading-none">
+                              ${(Number(order.total) + Number(order.deliveryFee || 0)).toLocaleString()}
+                            </p>
+                          </div>
+                          {(order.deliveryFee || 0) > 0 && (
+                            <div className="text-right">
+                               <p className="text-[8px] font-bold text-zinc-400 uppercase">Flete inc.</p>
+                               <p className="text-xs font-black text-zinc-500">${Number(order.deliveryFee).toLocaleString()}</p>
+                            </div>
+                          )}
+                        </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-white font-black text-[10px] uppercase tracking-widest">
-                        <button onClick={() => openCashModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
-                        <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
-                        <button 
-                          onClick={() => openInvoiceModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))}
-                          className="col-span-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 p-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-                        >
-                           <Printer size={14} className="text-zinc-400" />
-                           Factura Personalizada
-                        </button>
-                        <button onClick={() => openSplitModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))} className="col-span-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir Pago</button>
+                        <div className="grid grid-cols-2 gap-2 text-white font-black text-[10px] uppercase tracking-widest">
+                          <button onClick={() => openCashModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))} className="bg-emerald-500 hover:bg-emerald-600 p-3 rounded-xl transition-all active:scale-95">Efectivo</button>
+                          <button onClick={() => markAsPaid(order.id, 'TRANSFER')} className="bg-purple-500 hover:bg-purple-600 p-3 rounded-xl transition-all active:scale-95">Transfe</button>
+                          <button 
+                            onClick={() => openInvoiceModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))}
+                            className="col-span-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 p-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                          >
+                             <Printer size={14} className="text-zinc-400" />
+                             Factura Personalizada
+                          </button>
+                          <button onClick={() => openSplitModal(order.id, Number(order.total) + Number(order.deliveryFee || 0))} className="col-span-2 bg-zinc-800 hover:bg-zinc-700 p-3 rounded-xl text-zinc-200 transition-all active:scale-95">Dividir Pago</button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </section>
-        )}
+        )
+}
       </main>
 
       {/* Right Order Panel - Responsive Drawer */}
