@@ -72,17 +72,31 @@ export const OrderCard = ({ order, onStatusChange }: OrderCardProps) => {
       {/* Items */}
       <div className="p-5 flex-1 space-y-3">
         {order.items.map((item) => (
-          <div key={item.id} className="flex justify-between items-center group">
-            <div className="flex items-center gap-3">
-              <span className="w-8 h-8 flex items-center justify-center bg-zinc-100 rounded-lg text-sm font-black text-zinc-900 group-hover:bg-orange-500 group-hover:text-white transition-colors">
-                {item.quantity}
-              </span>
-              <span className="font-bold text-zinc-800 text-base">
-                {item.product.name}
-              </span>
+          <div key={item.id} className="flex flex-col gap-0.5">
+            <div className="flex justify-between items-center group">
+              <div className="flex items-center gap-3">
+                <span className="w-8 h-8 flex items-center justify-center bg-zinc-100 rounded-lg text-sm font-black text-zinc-900 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                  {item.quantity}
+                </span>
+                <span className="font-bold text-zinc-800 text-base">
+                  {item.product.name}
+                </span>
+              </div>
             </div>
+            {/* Per-item notes (e.g., "sin cebolla") */}
+            {item.notes && (
+              <p className="ml-11 text-xs text-zinc-500 italic">{item.notes}</p>
+            )}
           </div>
         ))}
+
+        {/* Order-level notes (e.g. "billete de 100", "pago mixto", etc.) */}
+        {order.notes && (
+          <div className="mt-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-xl">
+            <p className="text-xs font-bold text-yellow-700 uppercase tracking-wide mb-0.5">Nota</p>
+            <p className="text-sm text-yellow-800">{order.notes}</p>
+          </div>
+        )}
       </div>
 
       {/* Footer / Actions */}

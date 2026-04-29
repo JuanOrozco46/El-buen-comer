@@ -336,6 +336,12 @@ ESTRUCTURA:
 Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" para enviar la carta. En replyText informa siempre del total final (productos + domicilio) al usar "order".`;
 
     // 4. Build chat context and run Gemini
+    // Sanitize history: Gemini requires history to start with 'user' role
+    const sanitizedHistory = history.filter((_, i) => {
+      if (i === 0 && history[0]?.role !== "user") return false;
+      return true;
+    });
+
     const chatSession = model.startChat({
       systemInstruction: {
         role: "system",
@@ -344,7 +350,7 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
       generationConfig: {
         responseMimeType: "application/json"
       },
-      history: history.map(msg => ({
+      history: sanitizedHistory.map(msg => ({
         role: msg.role,
         parts: [{ text: msg.text }]
       }))
@@ -428,6 +434,16 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 
     // 7. If intent is order, create the Prisma order and deduct inventory
     if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items.length > 0) {
+
+      // Code-level guard: block transfer orders without an image (receipt) in this request
+      const notes = (geminiResponse.orderData.notes || "").toLowerCase();
+      const isTransferOrder = notes.includes("transferencia") || notes.includes("nequi");
+      if (isTransferOrder && aggregatedMedia.filter(m => m.type === 'image').length === 0) {
+        console.warn(`[WhatsApp Bot] BLOCKED transfer order without receipt image for ${senderPhone}`);
+        await sendWhatsAppMessage(remoteJid || "", "Necesito el comprobante de transferencia para confirmar el pedido. Por favor envíalo.");
+        return NextResponse.json({ received: true, error: "transfer_without_receipt" });
+      }
+
       // Priority: use the currently logged-in waiter. Fallback to ADMIN.
       const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
       const activeWaiterId = settings?.activeWaiterId;
@@ -540,10 +556,14 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
           return newOrder;
         });
 
-        // Mark conversation as completed (don't fully wipe or bot will re-greet)
+        // Mark conversation as completed with valid user/model pair
+        // (Gemini requires history to start with 'user' role - never store model-only history)
         await (prisma as any).whatsAppChat.update({
           where: { phone: senderPhone },
-          data: { history: [{ role: "model", text: "PEDIDO_COMPLETADO" }] }
+          data: { history: [
+            { role: "user", text: "[pedido confirmado]" },
+            { role: "model", text: "PEDIDO_COMPLETADO" }
+          ] }
         });
 
         console.log(`[WhatsApp Bot] Order #${order.id} generated completely.`);
