@@ -417,13 +417,25 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 
     // 7. If intent is order, create the Prisma order and deduct inventory
     if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items.length > 0) {
-      const systemUser = await prisma.user.findFirst({ where: { role: "ADMIN" } }) || await prisma.user.findFirst({ where: { role: "CASHIER" } });
-      if (!systemUser) {
-        console.error("[WhatsApp] No ADMIN or CASHIER user found to assign order");
+      // Priority: use the currently logged-in waiter. Fallback to ADMIN.
+      const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
+      const activeWaiterId = settings?.activeWaiterId;
+
+      const systemUser = activeWaiterId
+        ? await prisma.user.findUnique({ where: { id: activeWaiterId } })
+        : null;
+      
+      const fallbackUser = systemUser ?? (
+        await prisma.user.findFirst({ where: { role: "ADMIN" } }) ||
+        await prisma.user.findFirst({ where: { role: "CASHIER" } })
+      );
+
+      if (!fallbackUser) {
+        console.error("[WhatsApp] No user found to assign order");
         return NextResponse.json({ received: true, error: "no_system_user" });
       }
 
-      console.log(`[WhatsApp Bot] Creating order for ${senderPhone}...`);
+      console.log(`[WhatsApp Bot] Assigning order to: ${fallbackUser.name} (ID: ${fallbackUser.id})`);
 
       const orderData = geminiResponse.orderData;
       const deliveryFee = Number(orderData.deliveryFee) || 0;
@@ -457,7 +469,7 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
         const order = await prisma.$transaction(async (tx) => {
           const newOrder = await tx.order.create({
             data: {
-              userId: systemUser.id,
+              userId: fallbackUser.id,
               customerName: orderData.customerName || pushName || `WA: ${senderPhone}`,
               customerPhone: finalPhone,
               customerAddress: orderData.customerAddress || null,

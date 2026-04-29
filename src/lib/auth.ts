@@ -26,6 +26,18 @@ export const authOptions: NextAuthOptions = {
 
           if (!isPasswordValid) return null;
 
+          // --- RECORD ACTIVE WAITER IN GLOBAL SETTINGS ---
+          try {
+            await (prisma.globalSettings as any).upsert({
+              where: { id: 1 },
+              update: { activeWaiterId: user.id },
+              create: { id: 1, activeWaiterId: user.id, isPanicModeActive: false }
+            });
+          } catch (e) {
+            console.error("[Auth] Failed to update active waiter:", e);
+          }
+          // --- END ---
+
           return {
             id: user.id.toString(),
             name: user.name,
