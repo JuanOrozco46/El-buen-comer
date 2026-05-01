@@ -264,14 +264,23 @@ export async function POST(req: Request) {
     const currentHour = nowBogota.getHours();
     const currentMinutes = nowBogota.getMinutes();
     const timeValue = currentHour + currentMinutes / 60;
+    
+    const isBeforeOpen = timeValue < 10;
     const isPastDeliveryCutoff = timeValue >= 16;
-    const isPastPickupCutoff = timeValue >= 18.5;
+    const isPastPickupCutoff = timeValue >= 18; // 6 PM
+    const isPastRecogerCashCutoff = timeValue >= 14; // 2 PM
     
     let timeStatusMsg = "";
-    if (isPastPickupCutoff) {
-      timeStatusMsg = "\n⚠️ ESTADO: CERRADO (pasaron las 6:30 PM). RECHAZA TODOS LOS PEDIDOS amablemente y despídete.";
+    if (isBeforeOpen) {
+      timeStatusMsg = "\n⚠️ ESTADO: CERRADO (abrimos a las 10:00 AM). RECHAZA TODOS LOS PEDIDOS amablemente, informa que abren a las 10:00 AM.";
+    } else if (isPastPickupCutoff) {
+      timeStatusMsg = "\n⚠️ ESTADO: CERRADO (pasaron las 6:00 PM). RECHAZA TODOS LOS PEDIDOS amablemente y despídete.";
     } else if (isPastDeliveryCutoff) {
       timeStatusMsg = "\n⚠️ ESTADO: SOLO RECOGER (pasaron las 4:00 PM). RECHAZA DOMICILIOS amablemente. SÓLO ACEPTA pedidos para recoger.";
+    }
+
+    if (!isBeforeOpen && !isPastPickupCutoff && isPastRecogerCashCutoff) {
+      timeStatusMsg += "\n⚠️ REGLA OBLIGATORIA: Ya son más de las 2:00 PM. Si el pedido es PARA RECOGER, es OBLIGATORIO exigir que el pago sea por TRANSFERENCIA y pedir el comprobante ANTES de considerar la orden completa.";
     }
 
     const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
@@ -302,7 +311,9 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
 2. **BREVEDAD (REGLA CRÍTICA)**: Tus respuestas deben ser EXTREMADAMENTE CORTAS. Máximo 1-2 líneas. NUNCA uses frases de cortesía como "¡Claro!", "¡Con gusto!", "Entendido, tomaré nota de eso". Si el cliente da información adicional (ej: "que llegue después de las 12"), responde solamente "Listo." o "Ok." y nada más. Si ya tienes todos los datos para el pedido, procede directamente sin agregar relleno.
 3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
 3.1. **ARROZ CHINO (OBLIGATORIO)**: Si el cliente pide "Arroz Chino", DEBES preguntar si lo desea con Costilla, Chuleta o Tradicional (Solo).
-4. **RECOLECCIÓN DE DATOS**: Cuando el cliente defina el tamaño y pedido, revisa el historial para ver si ya dio sus datos. Si NO los tienes, dile EXACTAMENTE: "Listo confirmanos Nombre, Telefono, Direccion, Efectivo, transferencia o dividido". (Nota: Pregunta si es para Domicilio o Pasar a Recoger). Si YA los tienes, procede directamente al cierre.
+4. **RECOLECCIÓN DE DATOS**: OBLIGATORIO: Cuando el cliente defina el pedido, pregúntale si es para Domicilio o Pasar a Recoger.
+   - Si es para Domicilio: Pide Nombre, Teléfono, Dirección, y método de pago (Efectivo, transferencia o dividido).
+   - Si es Pasar a Recoger: Pide SOLO Nombre, Teléfono y método de pago. NO PIDAS DIRECCIÓN en este caso, es innecesaria.
 5. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
 6. **CIERRE CON EFECTIVO**: Si el pago incluye Efectivo, al crear el 'order' despídete EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
 7. **CIERRE CON TRANSFERENCIA**: Si el pago es todo o en parte por Nequi/Transferencia, dile EXACTAMENTE: "El total son [TOTAL]. Por favor realizar transferencia al Nequi 3173941189 o a la llave @nequilui57354. Envía el comprobante por este medio para verificar y procesar tu pedido inmediatamente."
@@ -519,14 +530,20 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 
       if (validItems.length > 0) {
         const order = await prisma.$transaction(async (tx) => {
+          const isTakeaway = (orderData.customerAddress && orderData.customerAddress.toLowerCase().includes("recoger"));
+          let finalCustomerName = orderData.customerName || pushName || `WA: ${senderPhone}`;
+          if (isTakeaway) {
+             finalCustomerName = `Recoger - ${finalCustomerName}`;
+          }
+
           const newOrder = await tx.order.create({
             data: {
               userId: fallbackUser.id,
-              customerName: orderData.customerName || pushName || `WA: ${senderPhone}`,
+              customerName: finalCustomerName,
               customerPhone: finalPhone,
               customerAddress: orderData.customerAddress || null,
               notes: orderData.notes || null,
-              source: (orderData.customerAddress && orderData.customerAddress.toLowerCase().includes("recoger")) ? "TAKEAWAY" : "DELIVERY",
+              source: isTakeaway ? "TAKEAWAY" : "DELIVERY",
               status: "PENDING",
               total: orderTotal,
               deliveryFee: deliveryFee,
