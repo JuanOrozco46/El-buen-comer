@@ -260,8 +260,22 @@ export async function POST(req: Request) {
     }
 
     // 3. Prepare Gemini Prompt
+    const nowBogota = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
+    const currentHour = nowBogota.getHours();
+    const currentMinutes = nowBogota.getMinutes();
+    const timeValue = currentHour + currentMinutes / 60;
+    const isPastDeliveryCutoff = timeValue >= 16;
+    const isPastPickupCutoff = timeValue >= 18.5;
+    
+    let timeStatusMsg = "";
+    if (isPastPickupCutoff) {
+      timeStatusMsg = "\n⚠️ ESTADO: CERRADO (pasaron las 6:30 PM). RECHAZA TODOS LOS PEDIDOS amablemente y despídete.";
+    } else if (isPastDeliveryCutoff) {
+      timeStatusMsg = "\n⚠️ ESTADO: SOLO RECOGER (pasaron las 4:00 PM). RECHAZA DOMICILIOS amablemente. SÓLO ACEPTA pedidos para recoger.";
+    }
+
     const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
-    const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.
+    const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.${timeStatusMsg}
 
 INVENTARIO ACTUAL Y PRECIOS:
 ${menuText}
@@ -287,6 +301,7 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
 1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez (historial completamente vacío), DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si el historial tiene la marca "PEDIDO_COMPLETADO" NO vuelvas a saludar. Si el cliente PIDE VER EL MENÚ / LA CARTA, usa el intent "send_menu" y una respuesta breve.
 2. **BREVEDAD (REGLA CRÍTICA)**: Tus respuestas deben ser EXTREMADAMENTE CORTAS. Máximo 1-2 líneas. NUNCA uses frases de cortesía como "¡Claro!", "¡Con gusto!", "Entendido, tomaré nota de eso". Si el cliente da información adicional (ej: "que llegue después de las 12"), responde solamente "Listo." o "Ok." y nada más. Si ya tienes todos los datos para el pedido, procede directamente sin agregar relleno.
 3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
+3.1. **ARROZ CHINO (OBLIGATORIO)**: Si el cliente pide "Arroz Chino", DEBES preguntar si lo desea con Costilla, Chuleta o Tradicional (Solo).
 4. **RECOLECCIÓN DE DATOS**: Cuando el cliente defina el tamaño y pedido, revisa el historial para ver si ya dio sus datos. Si NO los tienes, dile EXACTAMENTE: "Listo confirmanos Nombre, Telefono, Direccion, Efectivo, transferencia o dividido". (Nota: Pregunta si es para Domicilio o Pasar a Recoger). Si YA los tienes, procede directamente al cierre.
 5. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
 6. **CIERRE CON EFECTIVO**: Si el pago incluye Efectivo, al crear el 'order' despídete EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
@@ -511,7 +526,7 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
               customerPhone: finalPhone,
               customerAddress: orderData.customerAddress || null,
               notes: orderData.notes || null,
-              source: "DELIVERY",
+              source: (orderData.customerAddress && orderData.customerAddress.toLowerCase().includes("recoger")) ? "TAKEAWAY" : "DELIVERY",
               status: "PENDING",
               total: orderTotal,
               deliveryFee: deliveryFee,
