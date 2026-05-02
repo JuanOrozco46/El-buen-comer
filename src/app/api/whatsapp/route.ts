@@ -530,39 +530,98 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
          finalPhone = finalPhone.substring(2);
       }
 
+      // Check if there is an existing active order for this customer
+      const existingActiveOrder = await prisma.order.findFirst({
+        where: {
+          customerPhone: finalPhone,
+          status: { in: ["PENDING", "PREPARING"] },
+          createdAt: { gte: new Date(Date.now() - 4 * 60 * 60 * 1000) } // last 4 hours
+        },
+        orderBy: { id: "desc" },
+        include: { items: true }
+      });
+
       if (validItems.length > 0) {
+        let orderIdToReturn = -1;
         const order = await prisma.$transaction(async (tx) => {
           const isTakeaway = (orderData.customerAddress && orderData.customerAddress.toLowerCase().includes("recoger"));
           let finalCustomerName = orderData.customerName || pushName || `WA: ${senderPhone}`;
           if (isTakeaway) {
-             finalCustomerName = `Recoger - ${finalCustomerName}`;
+             finalCustomerName = `Recoger - ${finalCustomerName.replace(/^Recoger - /, '')}`;
           }
 
-          const newOrder = await tx.order.create({
-            data: {
-              userId: fallbackUser.id,
-              customerName: finalCustomerName,
-              customerPhone: finalPhone,
-              customerAddress: orderData.customerAddress || null,
-              notes: orderData.notes || null,
-              source: isTakeaway ? "TAKEAWAY" : "DELIVERY",
-              status: "PENDING",
-              total: orderTotal,
-              deliveryFee: deliveryFee,
-              items: {
-                create: validItems.map(vi => ({
-                  productId: vi.productId,
-                  sizeName: vi.sizeName,
-                  quantity: vi.quantity,
-                  price: vi.price,
-                  notes: vi.notes,
-                })),
-              },
-            } as any,
-            include: { items: { include: { product: true } } },
-          });
+          let finalOrder;
+          if (existingActiveOrder) {
+             // 1. Restore inventory for old items
+             for (const oldItem of existingActiveOrder.items) {
+               const recipes = await tx.recipe.findMany({
+                 where: { productId: oldItem.productId, sizeName: oldItem.sizeName }
+               });
+               for (const recipe of recipes) {
+                 const restoreAmt = Number(recipe.quantity) * Number(oldItem.quantity);
+                 await tx.ingredient.update({
+                   where: { id: recipe.ingredientId },
+                   data: { stock: { increment: restoreAmt } }
+                 });
+                 // Log restoration
+                 await tx.inventoryLog.create({
+                   data: { ingredientId: recipe.ingredientId, amount: restoreAmt, type: 'ADJUSTMENT', reason: `Modificación WA Orden #${existingActiveOrder.id} (Reversión)` }
+                 });
+               }
+             }
+             // 2. Clear old items
+             await tx.orderItem.deleteMany({ where: { orderId: existingActiveOrder.id } });
+             
+             // 3. Update the order
+             finalOrder = await tx.order.update({
+               where: { id: existingActiveOrder.id },
+               data: {
+                 customerName: finalCustomerName,
+                 customerAddress: orderData.customerAddress || null,
+                 notes: orderData.notes || null,
+                 source: isTakeaway ? "TAKEAWAY" : "DELIVERY",
+                 total: orderTotal,
+                 deliveryFee: deliveryFee,
+                 items: {
+                   create: validItems.map(vi => ({
+                     productId: vi.productId,
+                     sizeName: vi.sizeName,
+                     quantity: vi.quantity,
+                     price: vi.price,
+                     notes: vi.notes,
+                   })),
+                 },
+               },
+               include: { items: { include: { product: true } } },
+             });
+          } else {
+             // Create New Order
+             finalOrder = await tx.order.create({
+               data: {
+                 userId: fallbackUser.id,
+                 customerName: finalCustomerName,
+                 customerPhone: finalPhone,
+                 customerAddress: orderData.customerAddress || null,
+                 notes: orderData.notes || null,
+                 source: isTakeaway ? "TAKEAWAY" : "DELIVERY",
+                 status: "PENDING",
+                 total: orderTotal,
+                 deliveryFee: deliveryFee,
+                 items: {
+                   create: validItems.map(vi => ({
+                     productId: vi.productId,
+                     sizeName: vi.sizeName,
+                     quantity: vi.quantity,
+                     price: vi.price,
+                     notes: vi.notes,
+                   })),
+                 },
+               } as any,
+               include: { items: { include: { product: true } } },
+             });
+          }
 
-          // Automated Stock Deduction
+          // Automated Stock Deduction for the final current items
           for (const item of validItems) {
             const recipes = await tx.recipe.findMany({
               where: {
@@ -582,26 +641,19 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
                   ingredientId: recipe.ingredientId,
                   amount: deduction,
                   type: 'OUT',
-                  reason: `WhatsApp Bot Orden #${newOrder.id}`
+                  reason: `WhatsApp Bot Orden #${finalOrder.id}`
                 }
               });
             }
           }
 
-          return newOrder;
+          orderIdToReturn = finalOrder.id;
+          return finalOrder;
         });
 
-        // Mark conversation as completed with valid user/model pair
-        // (Gemini requires history to start with 'user' role - never store model-only history)
-        await (prisma as any).whatsAppChat.update({
-          where: { phone: senderPhone },
-          data: { history: [
-            { role: "user", text: "[pedido confirmado]" },
-            { role: "model", text: "PEDIDO_COMPLETADO" }
-          ] }
-        });
+        // Do NOT wipe history so that user can modify the order continuously in the future
+        console.log(`[WhatsApp Bot] Order #${orderIdToReturn} generated/updated completely.`);
 
-        console.log(`[WhatsApp Bot] Order #${order.id} generated completely.`);
       } else {
         console.error("[WhatsApp Bot] Failed to match any items from the JSON payload:", orderData.items);
       }
