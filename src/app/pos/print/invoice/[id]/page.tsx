@@ -127,10 +127,10 @@ function InvoicePrintContent() {
           </div>
           <div className="border border-black p-2 space-y-1 bg-white text-black">
              <p className="font-black text-black uppercase text-center border-b border-black mb-1 pb-1">DATOS DEL CLIENTE</p>
-             <p className="text-black"><b>R. SOCIAL:</b> {customerName}</p>
-             <p className="text-black"><b>NIT/CC:</b> {customerNit}</p>
-             {customerAddress && <p className="text-black"><b>DIR:</b> {customerAddress}</p>}
-             {customerPhone && <p className="text-black"><b>TEL:</b> {customerPhone}</p>}
+             <p className="text-black"><b>R. SOCIAL:</b> <span className="font-bold">{customerName}</span></p>
+             <p className="text-black"><b>NIT/CC:</b> <span className="font-bold">{customerNit}</span></p>
+             {customerAddress && <p className="text-black"><b>DIR:</b> <span className="font-bold">{customerAddress}</span></p>}
+             {customerPhone && <p className="text-black"><b>TEL:</b> <span className="font-bold">{customerPhone}</span></p>}
           </div>
         </div>
 
@@ -151,7 +151,7 @@ function InvoicePrintContent() {
                 <td className="py-2">
                   <div className="flex flex-col">
                     <span className="font-black uppercase">{item.product.name}</span>
-                    <span className="text-[9px]">{item.sizeName}</span>
+                    <span className="text-[10px] font-bold">{item.sizeName}</span>
                   </div>
                 </td>
                 <td className="py-2 text-right font-black">${(Number(item.price) * item.quantity).toLocaleString()}</td>
