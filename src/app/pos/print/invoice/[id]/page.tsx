@@ -94,6 +94,9 @@ function InvoicePrintContent() {
             color: #000 !important;
             font-family: 'Courier New', Courier, monospace !important;
           }
+          #print-area * {
+            color: #000 !important;
+          }
           @page {
             size: 80mm auto;
             margin: 0;
@@ -122,12 +125,12 @@ function InvoicePrintContent() {
             <span className="font-bold">FECHA:</span>
             <span>{dateStr}</span>
           </div>
-          <div className="border border-black p-2 space-y-1 bg-zinc-50">
-             <p className="font-black uppercase text-center border-b border-black mb-1 pb-1">DATOS DEL CLIENTE</p>
-             <p><b>R. SOCIAL:</b> {customerName}</p>
-             <p><b>NIT/CC:</b> {customerNit}</p>
-             {customerAddress && <p><b>DIR:</b> {customerAddress}</p>}
-             {customerPhone && <p><b>TEL:</b> {customerPhone}</p>}
+          <div className="border border-black p-2 space-y-1 bg-white text-black">
+             <p className="font-black text-black uppercase text-center border-b border-black mb-1 pb-1">DATOS DEL CLIENTE</p>
+             <p className="text-black"><b>R. SOCIAL:</b> {customerName}</p>
+             <p className="text-black"><b>NIT/CC:</b> {customerNit}</p>
+             {customerAddress && <p className="text-black"><b>DIR:</b> {customerAddress}</p>}
+             {customerPhone && <p className="text-black"><b>TEL:</b> {customerPhone}</p>}
           </div>
         </div>
 
@@ -143,7 +146,7 @@ function InvoicePrintContent() {
           </thead>
           <tbody>
             {order.items.map((item: any) => (
-              <tr key={item.id} className="border-b border-zinc-100">
+              <tr key={item.id} className="border-b border-black text-black">
                 <td className="py-2 font-bold">[{item.quantity}]</td>
                 <td className="py-2">
                   <div className="flex flex-col">
