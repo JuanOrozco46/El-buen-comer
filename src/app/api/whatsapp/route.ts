@@ -68,26 +68,34 @@ export async function POST(req: Request) {
     senderPhone = rawPhone ? normalizarNumero(rawPhone) : "Desconocido";
     const pushName = messageData.pushName || "";
 
-    const messageText = messageData.message?.conversation ||
-      messageData.message?.extendedTextMessage?.text ||
-      messageData.message?.imageMessage?.caption ||
-      messageData.message?.videoMessage?.caption || "";
-
-    // Detección mejorada de medios (incluye mensajes efímeros)
+    // Detección mejorada de medios (incluye mensajes efímeros, reenviados y documentos)
     const getMessage = (m: any) => {
-      if (m.message?.viewOnceMessage?.message) return m.message.viewOnceMessage.message;
-      if (m.message?.viewOnceMessageV2?.message) return m.message.viewOnceMessageV2.message;
-      return m.message;
+      let msg = m.message;
+      if (!msg) return msg;
+      if (msg.ephemeralMessage?.message) msg = msg.ephemeralMessage.message;
+      if (msg.viewOnceMessage?.message) msg = msg.viewOnceMessage.message;
+      if (msg.viewOnceMessageV2?.message) msg = msg.viewOnceMessageV2.message;
+      if (msg.documentWithCaptionMessage?.message) msg = msg.documentWithCaptionMessage.message;
+      return msg;
     };
     const effectiveMessage = getMessage(messageData);
 
-    const isImage = !!(effectiveMessage?.imageMessage);
+    const messageText = effectiveMessage?.conversation ||
+      effectiveMessage?.extendedTextMessage?.text ||
+      effectiveMessage?.imageMessage?.caption ||
+      effectiveMessage?.videoMessage?.caption || 
+      effectiveMessage?.documentMessage?.caption || "";
+
+    const isImage = !!(effectiveMessage?.imageMessage) || (effectiveMessage?.documentMessage?.mimetype?.startsWith('image/'));
     const isAudio = !!(effectiveMessage?.audioMessage);
+    const isDocument = !!(effectiveMessage?.documentMessage);
 
     let base64Media: string | null = null;
     let mimeType: string = "";
-    if (isImage) mimeType = "image/jpeg";
-    if (isAudio) mimeType = effectiveMessage.audioMessage.mimetype || "audio/ogg";
+    if (isImage && effectiveMessage?.imageMessage) mimeType = "image/jpeg";
+    if (isImage && effectiveMessage?.documentMessage) mimeType = effectiveMessage.documentMessage.mimetype || "image/jpeg";
+    if (isAudio) mimeType = effectiveMessage.audioMessage?.mimetype || "audio/ogg";
+    if (isDocument && !isImage) mimeType = effectiveMessage.documentMessage?.mimetype || "application/pdf";
 
     if (isImage || isAudio) {
       const apiUrl = process.env.EVOLUTION_API_URL;
@@ -267,19 +275,22 @@ export async function POST(req: Request) {
     
     const isBeforeOpen = timeValue < 10;
     const isPastDeliveryCutoff = timeValue >= 16;
-    const isPastPickupCutoff = timeValue >= 18; // 6 PM
+    const isPastSixPm = timeValue >= 18; // 6 PM
+    const isBotClosed = timeValue >= 18.5; // 6:30 PM
     const isPastRecogerCashCutoff = timeValue >= 14; // 2 PM
     
     let timeStatusMsg = "";
     if (isBeforeOpen) {
       timeStatusMsg = "\n⚠️ ESTADO: CERRADO (abrimos a las 10:00 AM). RECHAZA TODOS LOS PEDIDOS amablemente, informa que abren a las 10:00 AM.";
-    } else if (isPastPickupCutoff) {
-      timeStatusMsg = "\n⚠️ ESTADO: CERRADO (pasaron las 6:00 PM). RECHAZA TODOS LOS PEDIDOS amablemente y despídete.";
+    } else if (isBotClosed) {
+      timeStatusMsg = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM). RECHAZA TODOS LOS PEDIDOS amablemente y despídete.";
+    } else if (isPastSixPm) {
+      timeStatusMsg = "\n⚠️ ESTADO: SOLO RECOGER (pasaron las 6:00 PM). RECHAZA DOMICILIOS amablemente. SÓLO ACEPTA pedidos para recoger. REGLA OBLIGATORIA: Pago ÚNICAMENTE por TRANSFERENCIA, y DEBES AVISAR al cliente que debe pasar por su pedido ANTES de las 7:00 PM.";
     } else if (isPastDeliveryCutoff) {
       timeStatusMsg = "\n⚠️ ESTADO: SOLO RECOGER (pasaron las 4:00 PM). RECHAZA DOMICILIOS amablemente. SÓLO ACEPTA pedidos para recoger.";
     }
 
-    if (!isBeforeOpen && !isPastPickupCutoff && isPastRecogerCashCutoff) {
+    if (!isBeforeOpen && !isBotClosed && !isPastSixPm && isPastRecogerCashCutoff) {
       timeStatusMsg += "\n⚠️ REGLA OBLIGATORIA: Ya son más de las 2:00 PM. Si el pedido es PARA RECOGER, es OBLIGATORIO exigir que el pago sea por TRANSFERENCIA y pedir el comprobante ANTES de considerar la orden completa.";
     }
 
