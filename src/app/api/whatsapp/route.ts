@@ -260,26 +260,41 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         const preliminaryHistory = [...history, { role: "user", text: aggregatedText + (aggregatedMedia.length > 0 ? " [Contenía multimedia]" : "") }];
         await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: preliminaryHistory.slice(-50) } });
 
-        // Gemini Call
+        // Tiered Model Fallback (Primary: 2.5 Flash -> Fallback 1: 3 Flash -> Fallback 2: 2.5 Pro)
+        const fallbackModels = ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-pro"];
         let geminiResponse: any = null;
-        let tries = 5;
-        let waitTime = 2000;
-        while (tries > 0) {
-          try {
-            const session = model.startChat({ 
-              systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
-              generationConfig: { responseMimeType: "application/json" },
-              history: preliminaryHistory.slice(0, -1).map(h => ({ role: h.role, parts: [{ text: h.text }] }))
-            });
-            const res = await session.sendMessage(messageParts);
-            geminiResponse = JSON.parse(res.response.text().replace(/```json\n?|```\n?/g, "").trim());
-            break;
-          } catch(e) { 
-            tries--; 
-            console.error(`[WhatsApp Bot] Gemini API error, retries left: ${tries}`, e);
-            await new Promise(r => setTimeout(r, waitTime)); 
-            waitTime += 2000;
+
+        for (const modelName of fallbackModels) {
+          if (geminiResponse) break;
+          
+          let tries = (modelName === fallbackModels[0]) ? 3 : 2; // More retries for primary
+          let waitTime = 2000;
+          const currentModel = genAI.getGenerativeModel({ model: modelName });
+          
+          console.log(`[WhatsApp Bot] Querying model ${modelName} for ${senderPhone}`);
+          
+          while (tries > 0) {
+            try {
+              const session = currentModel.startChat({ 
+                systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
+                generationConfig: { responseMimeType: "application/json" },
+                history: preliminaryHistory.slice(0, -1).map(h => ({ role: h.role, parts: [{ text: h.text }] }))
+              });
+              const res = await session.sendMessage(messageParts);
+              const textResponse = res.response.text().replace(/```json\n?|```\n?/g, "").trim();
+              console.log(`[WhatsApp Bot] ${modelName} responded: ${textResponse}`);
+              geminiResponse = JSON.parse(textResponse);
+              break;
+            } catch(e: any) { 
+              tries--; 
+              console.error(`[WhatsApp Bot] ${modelName} error (${senderPhone}), retries left: ${tries}. Error: ${e.message}`);
+              if (tries > 0) {
+                await new Promise(r => setTimeout(r, waitTime)); 
+                waitTime += 2000;
+              }
+            }
           }
+          if (!geminiResponse) console.warn(`[WhatsApp Bot] Model ${modelName} exhausted all retries. Moving to next fallback if any.`);
         }
 
         if (geminiResponse?.replyText) {
