@@ -38,7 +38,8 @@ export async function POST(req: Request) {
     if (!data || !data.message) return NextResponse.json({ received: true });
 
     remoteJid = data.key.remoteJid;
-    senderPhone = normalizarNumero(remoteJid);
+    const rawPhone = remoteJid?.replace(/@s.whatsapp.net|@g.us/, "");
+    senderPhone = normalizarNumero(rawPhone);
     pushName = data.pushName || "";
 
     const getMessage = (m: any): any => {
