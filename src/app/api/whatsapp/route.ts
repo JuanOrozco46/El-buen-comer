@@ -189,8 +189,9 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
 3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
 3.1. **ARROZ CHINO (OBLIGATORIO)**: Si el cliente pide "Arroz Chino", DEBES preguntar si lo desea con Costilla, Chuleta o Tradicional (Solo).
 4. **RECOLECCIÓN DE DATOS**: OBLIGATORIO: Cuando el cliente defina el pedido, pregúntale si es para Domicilio o Pasar a Recoger.
-   - Si es para Domicilio: Pide Nombre, Teléfono, Dirección, y método de pago.
+   - Si es para Domicilio: Pide Nombre, Teléfono, Dirección, y método de pago (Efectivo o Transferencia).
    - Si es Pasar a Recoger: Pide SOLO Nombre, Teléfono y método de pago. NO PIDAS DIRECCIÓN.
+4.1. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
 5. **CIERRE CON EFECTIVO**:
     - Si es domicilio EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
     - Si es recoger EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Gracias por comprar en el buen comer."
@@ -221,9 +222,10 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 }
 `;
 
-        const messageParts: any[] = [{ text: aggregatedText }];
+        const messageParts: any[] = [];
+        if (aggregatedText) messageParts.push({ text: aggregatedText });
         for (const m of aggregatedMedia) {
-          messageParts.push({ text: m.type === 'image' ? "[Imagen]" : "El usuario mandó un audio." });
+          messageParts.push({ text: m.type === 'image' ? "[Imagen adjunta de transferencia]" : "El usuario ha enviado un mensaje de voz pidiendo algo." });
           messageParts.push({ inlineData: { mimeType: m.mime, data: m.base64 } });
         }
 
@@ -257,16 +259,20 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
             const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
-            const user = (settings?.activeWaiterId ? await prisma.user.findUnique({ where: { id: settings.activeWaiterId } }) : null) || await prisma.user.findFirst({ where: { role: "ADMIN" } });
+            // Fallback securely to ANY existing user if active waiter or admin is not found
+            let user: any = null;
+            if (settings?.activeWaiterId) user = await prisma.user.findUnique({ where: { id: settings.activeWaiterId } });
+            if (!user) user = await prisma.user.findFirst({ where: { role: "CASHIER" } });
+            if (!user) user = await prisma.user.findFirst(); 
             
             const validItems: any[] = [];
             let total = 0;
             for (const i of od.items) {
-              const p = products.find(x => x.name.toLowerCase() === i.productName.toLowerCase());
+              const p = products.find(x => x.name.toLowerCase() === i.productName.toLowerCase() || x.name.toLowerCase().includes(i.productName.toLowerCase()));
               if (p) {
                 const s = p.sizes.find(z => z.name.toLowerCase() === i.sizeName.toLowerCase()) || p.sizes[0];
-                validItems.push({ productId: p.id, sizeName: s.name, quantity: i.quantity, price: Number(s.price), notes: i.notes || null });
-                total += Number(s.price) * i.quantity;
+                validItems.push({ productId: p.id, sizeName: s.name, quantity: Number(i.quantity) || 1, price: Number(s.price), notes: i.notes || null });
+                total += Number(s.price) * (Number(i.quantity) || 1);
               }
             }
 
@@ -275,6 +281,8 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               if (pPhone.startsWith("57") && pPhone.length > 10) pPhone = pPhone.substring(2);
 
               const existing = await prisma.order.findFirst({ where: { customerPhone: pPhone, status: { in: ["PENDING", "PREPARING"] }, createdAt: { gte: new Date(Date.now() - 4 * 3600000) } }, include: { items: true } });
+
+              const orderSource = od.customerAddress?.toLowerCase().includes("recoger") || !od.customerAddress ? "TAKEAWAY" : "DELIVERY";
 
               await prisma.$transaction(async (tx) => {
                 let name = od.customerName || pushName || `WA: ${senderPhone}`;
@@ -286,9 +294,9 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                     for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { increment: Number(r.quantity) * oi.quantity } } });
                   }
                   await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
-                  await tx.order.update({ where: { id: existing.id }, data: { customerName: name, customerAddress: od.customerAddress, notes: od.notes, total: total + (Number(od.deliveryFee) || 0), deliveryFee: Number(od.deliveryFee) || 0, items: { create: validItems } } });
+                  await tx.order.update({ where: { id: existing.id }, data: { customerName: name, customerAddress: od.customerAddress, notes: od.notes, total: total + (Number(od.deliveryFee) || 0), deliveryFee: Number(od.deliveryFee) || 0, source: orderSource, status: "PENDING", items: { create: validItems } } });
                 } else {
-                  await tx.order.create({ data: { userId: user.id, customerName: name, customerPhone: pPhone, customerAddress: od.customerAddress, source: 'WHATSAPP', total: total + (Number(od.deliveryFee) || 0), deliveryFee: Number(od.deliveryFee) || 0, notes: od.notes, items: { create: validItems } } });
+                  await tx.order.create({ data: { userId: user.id, customerName: name, customerPhone: pPhone, customerAddress: od.customerAddress, source: orderSource, status: "PENDING", total: total + (Number(od.deliveryFee) || 0), deliveryFee: Number(od.deliveryFee) || 0, notes: od.notes, items: { create: validItems } } });
                 }
 
                 for (const vi of validItems) {
@@ -296,6 +304,9 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                   for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { decrement: Number(r.quantity) * vi.quantity } } });
                 }
               });
+              console.log(`[WhatsApp Bot] Order generated/updated successfully for ${senderPhone}`);
+            } else {
+              console.log(`[WhatsApp Bot] Order generation failed for ${senderPhone} - validItems: ${validItems.length}, user: ${!!user}`);
             }
           }
         }
