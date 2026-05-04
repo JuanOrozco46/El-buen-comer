@@ -328,9 +328,9 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                     for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { increment: Number(r.quantity) * oi.quantity } } });
                   }
                   await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
-                  await tx.order.update({ where: { id: existing.id }, data: { customerName: name, customerAddress: od.customerAddress, notes: od.notes, total: total + (Number(od.deliveryFee) || 0), deliveryFee: Number(od.deliveryFee) || 0, source: orderSource, status: "PENDING", items: { create: validItems } } });
+                  await tx.order.update({ where: { id: existing.id }, data: { customerName: name, customerAddress: od.customerAddress, notes: od.notes, total: total, deliveryFee: Number(od.deliveryFee) || 0, source: orderSource, status: "PENDING", items: { create: validItems } } });
                 } else {
-                  await tx.order.create({ data: { userId: user.id, customerName: name, customerPhone: pPhone, customerAddress: od.customerAddress, source: orderSource, status: "PENDING", total: total + (Number(od.deliveryFee) || 0), deliveryFee: Number(od.deliveryFee) || 0, notes: od.notes, items: { create: validItems } } });
+                  await tx.order.create({ data: { userId: user.id, customerName: name, customerPhone: pPhone, customerAddress: od.customerAddress, source: orderSource, status: "PENDING", total: total, deliveryFee: Number(od.deliveryFee) || 0, notes: od.notes, items: { create: validItems } } });
                 }
 
                 for (const vi of validItems) {
