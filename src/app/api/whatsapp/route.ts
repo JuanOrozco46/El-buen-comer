@@ -30,6 +30,10 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
+// Throttling for admin alerts to avoid spam
+let lastAlertTimestamp = 0;
+const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
+
 /**
  * POST /api/whatsapp
  * Webhook receiver for incoming WhatsApp messages from Evolution API.
@@ -377,25 +381,7 @@ ESTRUCTURA:
 Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" para enviar la carta. En replyText informa siempre del total final (productos + domicilio) al usar "order".`;
 
     // 4. Build chat context and run Gemini
-    // Sanitize history: Gemini requires history to start with 'user' role
-    const sanitizedHistory = history.filter((_, i) => {
-      if (i === 0 && history[0]?.role !== "user") return false;
-      return true;
-    });
 
-    const chatSession = model.startChat({
-      systemInstruction: {
-        role: "system",
-        parts: [{ text: systemInstruction }]
-      },
-      generationConfig: {
-        responseMimeType: "application/json"
-      },
-      history: sanitizedHistory.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.text }]
-      }))
-    });
 
     const messageParts: any[] = [];
     if (aggregatedText) messageParts.push({ text: aggregatedText });
@@ -416,20 +402,78 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
       });
     }
 
-    console.log(`[WhatsApp Bot] Processing with Gemini 2.5-flash for ${senderPhone}...`);
-    const result = await chatSession.sendMessage(messageParts);
-    const responseText = result.response.text();
-    console.log(`[WhatsApp Bot] Gemini response: ${responseText.substring(0, 100)}...`);
-    let geminiResponse: any = null;
 
-    try {
-      // Remove any potential markdown json block formatting
-      const cleanJson = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      geminiResponse = JSON.parse(cleanJson);
-    } catch (e) {
-      console.error("[WhatsApp Bot] Gemini returned invalid JSON:", responseText);
-      await sendWhatsAppMessage(remoteJid, "Ups, estoy teniendo un problema técnico en mi sistema. Dame un momento y vuelve a escribirme. 😥");
-      return NextResponse.json({ received: true, error: "json_parse" });
+
+    // 5. Save Preliminary History (User message only)
+    const historyUserText = aggregatedText + (aggregatedMedia.length > 0 ? ` [Contenía ${aggregatedMedia.length} archivos multimedia]` : "");
+    const preliminaryHistory = [
+      ...history,
+      { role: "user", text: historyUserText }
+    ];
+
+    // Update DB with user message immediately to prevent context loss if AI fails
+    await (prisma as any).whatsAppChat.update({
+      where: { phone: senderPhone },
+      data: { history: preliminaryHistory.slice(-50) }
+    });
+
+    console.log(`[WhatsApp Bot] Processing with Gemini for ${senderPhone}...`);
+    
+    let geminiResponse: any = null;
+    let retries = 3;
+    let delay = 1000;
+
+    while (retries > 0) {
+      try {
+        // Sanitize history: Gemini requires history to start with 'user' role
+        const geminiHistory = preliminaryHistory.slice(0, -1)
+          .filter((msg, i, arr) => {
+            if (msg.role === "model" && i === 0) return false;
+            return true;
+          })
+          .map(msg => ({
+            role: msg.role,
+            parts: [{ text: msg.text }]
+          }));
+
+        // Start fresh session per attempt to be safe with state
+        const chatSession = model.startChat({
+          systemInstruction: {
+            role: "system",
+            parts: [{ text: systemInstruction }]
+          },
+          generationConfig: {
+            responseMimeType: "application/json"
+          },
+          history: geminiHistory
+        });
+
+        const result = await chatSession.sendMessage(messageParts);
+        const responseText = result.response.text();
+        console.log(`[WhatsApp Bot] Gemini response: ${responseText.substring(0, 100)}...`);
+
+        // Parse JSON
+        const cleanJson = responseText.replace(/```json\n?|```\n?/g, "").trim();
+        geminiResponse = JSON.parse(cleanJson);
+        break; // Success!
+      } catch (err: any) {
+        retries--;
+        console.error(`[WhatsApp Bot] Gemini Attempt failed (${3 - retries}/3):`, err.message);
+        
+        if (retries > 0 && (err.message.includes("503") || err.message.includes("high demand") || err.message.includes("fetch failed"))) {
+           console.log(`[WhatsApp Bot] Retrying in ${delay}ms...`);
+           await new Promise(resolve => setTimeout(resolve, delay));
+           delay *= 2;
+           continue;
+        }
+
+        if (retries === 0) {
+           console.error("[WhatsApp Bot] Max retries reached or fatal error.");
+           // SILENT FAILURE for customer (to avoid annoying technical messages)
+           // The history is already saved, so mesero can see it and bot will pick it up on next message.
+           return NextResponse.json({ received: true, error: "ai_failure" });
+        }
+      }
     }
 
     if (!geminiResponse || !geminiResponse.intent || !geminiResponse.replyText) {
@@ -445,22 +489,20 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
       geminiResponse.intent = "send_menu";
     }
 
-    // 5. Save History
-    const historyUserText = aggregatedText + (aggregatedMedia.length > 0 ? ` [Contenía ${aggregatedMedia.length} archivos multimedia]` : "");
-    const newHistory = [
-      ...history,
-      { role: "user", text: historyUserText },
+    // 6. Save Final History (Model response)
+    const finalHistory = [
+      ...preliminaryHistory,
       { role: "model", text: JSON.stringify(geminiResponse) }
-    ].slice(-50); // keep last 50 messages (daily context)
+    ].slice(-50); 
 
     await (prisma as any).whatsAppChat.update({
       where: { phone: senderPhone },
       data: { 
-        history: newHistory,
+        history: finalHistory,
         isProcessing: false // RELEASE LOCK
       }
     });
-    console.log(`[WhatsApp Bot] History updated for ${senderPhone}`);
+    console.log(`[WhatsApp Bot] History finalized for ${senderPhone}`);
 
     // 6. Send Response to User via WhatsApp
     if (geminiResponse.intent === "send_menu") {
@@ -687,14 +729,30 @@ Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" par
 } catch (error: any) {
   console.error("[WhatsApp Webhook] General Error:", error);
   
-  // Notify Admin about the error
-  const ADMIN_PHONE = "573223119008";
-  try {
-     const errorPrefix = "[⚠️ ALERT BOT]";
-     const errorMsg = `${errorPrefix}\n\nError detectado: ${error.message}\nCliente afectado: ${senderPhone || "Desconocido"}\n\nPor favor revisa el sistema.`;
-     await sendWhatsAppMessage(`${ADMIN_PHONE}@s.whatsapp.net`, errorMsg);
-  } catch(e) {
-     console.error("[WhatsApp Bot] Failed to notify admin:", e);
+  // Suppression: Don't alert admin for known transient Gemini errors (already handled by retries/silence)
+  const isTransient = error.message?.includes("503") || 
+                      error.message?.includes("Service Unavailable") || 
+                      error.message?.includes("high demand") ||
+                      error.message?.includes("fetch failed");
+
+  if (isTransient) {
+    return NextResponse.json({ received: true, error: "transient_ai_failure" });
+  }
+
+  // Throttling: Only notify admin once every 15 minutes for other errors
+  const now = Date.now();
+  if (now - lastAlertTimestamp > ALERT_COOLDOWN) {
+    lastAlertTimestamp = now;
+    const ADMIN_PHONE = "573223119008";
+    try {
+       const errorPrefix = "[⚠️ ALERT BOT]";
+       const errorMsg = `${errorPrefix}\n\nError detectado: ${error.message}\nCliente afectado: ${senderPhone || "Desconocido"}\n\nEste aviso se silenciará por 15 minutos.`;
+       await sendWhatsAppMessage(`${ADMIN_PHONE}@s.whatsapp.net`, errorMsg);
+    } catch(e) {
+       console.error("[WhatsApp Bot] Failed to notify admin:", e);
+    }
+  } else {
+    console.log(`[WhatsApp Bot] Alert throttled (last alert was < 15m ago)`);
   }
 
   return NextResponse.json({ received: true, error: error.message });
