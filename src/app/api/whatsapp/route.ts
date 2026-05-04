@@ -262,7 +262,8 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
         // Gemini Call
         let geminiResponse: any = null;
-        let tries = 3;
+        let tries = 5;
+        let waitTime = 2000;
         while (tries > 0) {
           try {
             const session = model.startChat({ 
@@ -273,7 +274,12 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             const res = await session.sendMessage(messageParts);
             geminiResponse = JSON.parse(res.response.text().replace(/```json\n?|```\n?/g, "").trim());
             break;
-          } catch(e) { tries--; await new Promise(r => setTimeout(r, 1000)); }
+          } catch(e) { 
+            tries--; 
+            console.error(`[WhatsApp Bot] Gemini API error, retries left: ${tries}`, e);
+            await new Promise(r => setTimeout(r, waitTime)); 
+            waitTime += 2000;
+          }
         }
 
         if (geminiResponse?.replyText) {
