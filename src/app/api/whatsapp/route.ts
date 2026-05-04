@@ -60,12 +60,39 @@ export async function POST(req: Request) {
     else if (messageObj.extendedTextMessage) messageText = messageObj.extendedTextMessage.text;
     else if (messageObj.imageMessage) {
       messageText = messageObj.imageMessage.caption || "";
-      mediaItem = { type: 'image', mime: messageObj.imageMessage.mimetype, base64: body.base64 };
+      mediaItem = { type: 'image', mime: messageObj.imageMessage.mimetype, base64: null };
     } else if (messageObj.audioMessage) {
-      mediaItem = { type: 'audio', mime: messageObj.audioMessage.mimetype, base64: body.base64 };
+      mediaItem = { type: 'audio', mime: messageObj.audioMessage.mimetype, base64: null };
     } else if (messageObj.documentMessage) {
        messageText = messageObj.documentMessage.caption || "";
-       if (messageObj.documentMessage.mimetype?.startsWith('image')) mediaItem = { type: 'image', mime: messageObj.documentMessage.mimetype, base64: body.base64 };
+       if (messageObj.documentMessage.mimetype?.startsWith('image')) mediaItem = { type: 'image', mime: messageObj.documentMessage.mimetype, base64: null };
+    }
+
+    // --- FETCH BASE64 FOR MEDIA IF PRESENT ---
+    if (mediaItem) {
+      const apiUrl = process.env.EVOLUTION_API_URL;
+      const apiKey = process.env.EVOLUTION_API_KEY;
+      const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "Elbuencomer";
+      
+      let rawBase64 = body.base64 || data.base64 || data.message?.base64; // Check if already present
+
+      if (!rawBase64 && apiUrl && apiKey && instanceName && data.key?.id) {
+        try {
+          const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+          const response = await fetch(`${cleanUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "apikey": apiKey },
+            body: JSON.stringify({ message: { key: data.key, message: data.message } })
+          });
+          const fetchedData = await response.json();
+          if (fetchedData && typeof fetchedData.base64 === "string") {
+            rawBase64 = fetchedData.base64.replace(/^data:[^;]+;base64,/, "");
+          }
+        } catch (e) {
+          console.error("[WhatsApp Bot] Error fetching base64 for media:", e);
+        }
+      }
+      mediaItem.base64 = rawBase64;
     }
 
     // --- HANDLE OUTGOING MESSAGES (fromMe) ---
