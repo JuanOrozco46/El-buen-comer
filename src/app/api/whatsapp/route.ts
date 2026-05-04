@@ -1,760 +1,272 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { sendWhatsAppMessage, formatOrderConfirmation, formatMenuMessage, normalizarNumero, sendWhatsAppMedia } from "../../../lib/whatsapp";
-
-/**
- * GET /api/whatsapp
- * Health check & webhook verification (for Evolution API).
- */
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const verifyToken = searchParams.get("hub.verify_token");
-  const challenge = searchParams.get("hub.challenge");
-  const mode = searchParams.get("hub.mode");
-
-  // Standard webhook verification handshake
-  if (mode === "subscribe" && verifyToken === process.env.WHATSAPP_VERIFY_TOKEN) {
-    return new Response(challenge, { status: 200 });
-  }
-
-  return NextResponse.json({
-    status: "ok",
-    service: "WhatsApp Integration — El buen comer",
-    apiConfigured: !!(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY),
-    timestamp: new Date().toISOString(),
-  });
-}
-
+import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia } from "../../../lib/whatsapp";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
 
 // Throttling for admin alerts to avoid spam
 let lastAlertTimestamp = 0;
 const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
 
 /**
+ * GET /api/whatsapp
+ */
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const verifyToken = searchParams.get("hub.verify_token");
+  const challenge = searchParams.get("hub.challenge");
+  const mode = searchParams.get("hub.mode");
+  if (mode === "subscribe" && verifyToken === process.env.WHATSAPP_VERIFY_TOKEN) {
+    return new Response(challenge, { status: 200 });
+  }
+  return NextResponse.json({ status: "ok" });
+}
+
+/**
  * POST /api/whatsapp
- * Webhook receiver for incoming WhatsApp messages from Evolution API.
  */
 export async function POST(req: Request) {
   let senderPhone = "Desconocido";
+  let remoteJid = "";
+  let pushName = "";
+
   try {
     const body = await req.json();
-    const event = body.event;
+    const data = body.data;
+    if (!data || !data.message) return NextResponse.json({ received: true });
 
-    if (event === "connection.update") {
-      const state = body.data?.state || "unknown";
-      console.log(`[WhatsApp] Connection update: ${state}`);
-      return NextResponse.json({ received: true, connectionState: state });
-    }
+    remoteJid = data.key.remoteJid;
+    senderPhone = normalizarNumero(remoteJid);
+    pushName = data.pushName || "";
 
-    console.log(`[WhatsApp Bot] Full event body:`, JSON.stringify(body, null, 2));
-
-    if (event !== "messages.upsert") {
-      return NextResponse.json({ received: true });
-    }
-
-    const messageData = body.data?.messages?.[0] || body.data;
-    if (!messageData || messageData.key?.fromMe) {
-      return NextResponse.json({ received: true });
-    }
-
-    // Ignore message reactions (emoji responses) - they are not real messages
-    if (messageData.message?.reactionMessage || messageData.messageType === "reactionMessage") {
-      console.log(`[WhatsApp Bot] Ignoring reaction message from ${messageData.key?.remoteJid}`);
-      return NextResponse.json({ received: true });
-    }
-
-    const remoteJid = messageData.key?.remoteJid;
-    const rawPhone = remoteJid?.replace(/@s.whatsapp.net|@g.us/, "");
-    senderPhone = rawPhone ? normalizarNumero(rawPhone) : "Desconocido";
-    const pushName = messageData.pushName || "";
-
-    // Detección mejorada de medios (incluye mensajes efímeros, reenviados y documentos)
-    const getMessage = (m: any) => {
-      let msg = m.message;
-      if (!msg) return msg;
-      if (msg.ephemeralMessage?.message) msg = msg.ephemeralMessage.message;
-      if (msg.viewOnceMessage?.message) msg = msg.viewOnceMessage.message;
-      if (msg.viewOnceMessageV2?.message) msg = msg.viewOnceMessageV2.message;
-      if (msg.documentWithCaptionMessage?.message) msg = msg.documentWithCaptionMessage.message;
-      return msg;
+    const getMessage = (m: any): any => {
+      if (!m) return null;
+      if (m.ephemeralMessage) return getMessage(m.ephemeralMessage.message);
+      if (m.viewOnceMessageV2) return getMessage(m.viewOnceMessageV2.message);
+      if (m.documentWithCaptionMessage) return getMessage(m.documentWithCaptionMessage.message);
+      return m;
     };
-    const effectiveMessage = getMessage(messageData);
 
-    const messageText = effectiveMessage?.conversation ||
-      effectiveMessage?.extendedTextMessage?.text ||
-      effectiveMessage?.imageMessage?.caption ||
-      effectiveMessage?.videoMessage?.caption || 
-      effectiveMessage?.documentMessage?.caption || "";
+    const isFromMe = data.key.fromMe;
+    const messageObj = getMessage(data.message);
+    if (!messageObj || data.message.reactionMessage) return NextResponse.json({ received: true });
 
-    const isImage = !!(effectiveMessage?.imageMessage) || (effectiveMessage?.documentMessage?.mimetype?.startsWith('image/'));
-    const isAudio = !!(effectiveMessage?.audioMessage);
-    const isDocument = !!(effectiveMessage?.documentMessage);
+    let messageText = "";
+    let mediaItem: any = null;
 
-    let base64Media: string | null = null;
-    let mimeType: string = "";
-    if (isImage && effectiveMessage?.imageMessage) mimeType = "image/jpeg";
-    if (isImage && effectiveMessage?.documentMessage) mimeType = effectiveMessage.documentMessage.mimetype || "image/jpeg";
-    if (isAudio) mimeType = effectiveMessage.audioMessage?.mimetype || "audio/ogg";
-    if (isDocument && !isImage) mimeType = effectiveMessage.documentMessage?.mimetype || "application/pdf";
+    if (messageObj.conversation) messageText = messageObj.conversation;
+    else if (messageObj.extendedTextMessage) messageText = messageObj.extendedTextMessage.text;
+    else if (messageObj.imageMessage) {
+      messageText = messageObj.imageMessage.caption || "";
+      mediaItem = { type: 'image', mime: messageObj.imageMessage.mimetype, base64: body.base64 };
+    } else if (messageObj.audioMessage) {
+      mediaItem = { type: 'audio', mime: messageObj.audioMessage.mimetype, base64: body.base64 };
+    } else if (messageObj.documentMessage) {
+       messageText = messageObj.documentMessage.caption || "";
+       if (messageObj.documentMessage.mimetype?.startsWith('image')) mediaItem = { type: 'image', mime: messageObj.documentMessage.mimetype, base64: body.base64 };
+    }
 
-    if (isImage || isAudio) {
-      const apiUrl = process.env.EVOLUTION_API_URL;
-      const apiKey = process.env.EVOLUTION_API_KEY;
-      const instanceName = process.env.EVOLUTION_INSTANCE_NAME;
- 
-      if (apiUrl && apiKey && instanceName && messageData.key?.id) {
-        try {
-          console.log(`[WhatsApp Bot] Requesting base64 for ${isImage ? 'image' : 'audio'} message: ${messageData.key.id}`);
-          const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
-          const response = await fetch(`${cleanUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "apikey": apiKey
-            },
-            body: JSON.stringify({
-              message: {
-                key: messageData.key,
-                message: effectiveMessage // Enviamos el mensaje efectivo (desenvolvedor de viewOnce)
-              }
-            })
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Evolution API Error: ${response.status} - ${errorText}`);
-          }
+    // --- HANDLE OUTGOING MESSAGES (fromMe) ---
+    if (isFromMe) {
+      if (!messageText) return NextResponse.json({ received: true });
+      console.log(`[WhatsApp Bot] Detected outgoing from current user to ${senderPhone}: "${messageText}"`);
+      
+      const chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
+      if (chat) {
+        let history = (chat.history as any[]) || [];
+        // Prevent doubling if the bot just sent this in the same cycle
+        const isDuplicate = history.length > 0 && 
+            (history[history.length - 1].text === messageText || 
+             history[history.length - 1].text?.includes(messageText.substring(0, 50)));
 
-          const data = await response.json();
-          if (data && typeof data.base64 === "string") {
-             console.log(`[WhatsApp Bot] Successfully retrieved base64 (${data.base64.length} chars)`);
-             let rawBase64 = data.base64;
-             const mimeMatch = rawBase64.match(/^data:([^;]+);base64,/);
-             if (mimeMatch) {
-                mimeType = mimeMatch[1];
-             }
-             base64Media = rawBase64.replace(/^data:[^;]+;base64,/, "");
-          } else {
-             console.warn(`[WhatsApp Bot] API returned success but NO base64 field found`, data);
-          }
-        } catch (e) {
-             console.error(`[WhatsApp Bot] Error fetching base64 for ${isImage ? 'image' : 'audio'}:`, e);
+        if (!isDuplicate) {
+          const updatedHistory = [...history, { role: "model", text: messageText }].slice(-50);
+          await prisma.whatsAppChat.update({ where: { phone: senderPhone }, data: { history: updatedHistory, updatedAt: new Date() } });
+          console.log(`[WhatsApp Bot] Manual message synced to history for ${senderPhone}`);
         }
       }
-    }
-
-    // --- START DEBOUNCING LOGIC ---
-    // 0. Save current message to buffer
-    await (prisma as any).whatsAppMessageBuffer.create({
-      data: {
-        phone: senderPhone,
-        content: messageText || null,
-        mimeType: mimeType || null,
-        base64: base64Media || null,
-      }
-    });
-
-    // 1. Try to acquire lock with TTL (1 minute)
-    // check if chat exists, if not create it
-    let chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
-    if (!chat) {
-      chat = await prisma.whatsAppChat.create({
-        data: { phone: senderPhone, history: [] }
-      });
-    }
-
-    const ONE_MINUTE_AGOO = new Date(Date.now() - 60000);
-    
-    // Check if it's currently processing and NOT STALE
-    if ((chat as any).isProcessing && chat.updatedAt > ONE_MINUTE_AGOO) {
-      console.log(`[WhatsApp Bot] Busy processing for ${senderPhone}. Buffering message.`);
       return NextResponse.json({ received: true });
     }
 
-    // Attempt to set isProcessing = true (Atomic-ish)
-    // If it was processing but stale (updatedAt < ONE_MINUTE_AGOO), we override it
+
+    // 0. Buffer message
+    await (prisma as any).whatsAppMessageBuffer.create({
+      data: { phone: senderPhone, content: messageText, mimeType: mediaItem?.mime || null, base64: mediaItem?.base64 || null }
+    });
+
+    // 1. Lock check
+    let chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
+    if (!chat) chat = await prisma.whatsAppChat.create({ data: { phone: senderPhone, history: [] } });
+
+    const ONE_MINUTE_AGO = new Date(Date.now() - 60000);
+    if ((chat as any).isProcessing && chat.updatedAt > ONE_MINUTE_AGO) return NextResponse.json({ received: true });
+
     const lockAcquired = await (prisma as any).whatsAppChat.updateMany({
-      where: { 
-        phone: senderPhone, 
-        OR: [
-          { isProcessing: false },
-          { updatedAt: { lt: ONE_MINUTE_AGOO } }
-        ]
-      },
+      where: { phone: senderPhone, OR: [{ isProcessing: false }, { updatedAt: { lt: ONE_MINUTE_AGO } }] },
       data: { isProcessing: true, updatedAt: new Date() }
     });
-
-    if (lockAcquired.count === 0) {
-      console.log(`[WhatsApp Bot] Lock collision or busy for ${senderPhone}.`);
-      return NextResponse.json({ received: true });
-    }
+    if (lockAcquired.count === 0) return NextResponse.json({ received: true });
 
     try {
-      // 2. Wait for more messages (Reduced to 3s to be safer on Vercel)
-      console.log(`[WhatsApp Bot] Lock acquired for ${senderPhone}. Waiting 3s for more messages...`);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      let isFirstIteration = true;
+      let loops = 0;
 
-    // 3. Collect ALL buffered messages
-    const bufferItems = await (prisma as any).whatsAppMessageBuffer.findMany({
-      where: { phone: senderPhone },
-      orderBy: { createdAt: 'asc' }
-    });
-
-    // Clear buffer immediately
-    await (prisma as any).whatsAppMessageBuffer.deleteMany({
-      where: { phone: senderPhone }
-    });
-
-    // Concatenate all text and collect all media
-    let aggregatedText = "";
-    const aggregatedMedia: { base64: string, mime: string, type: 'image' | 'audio' }[] = [];
-
-    for (const item of bufferItems) {
-      if (item.content) aggregatedText += (aggregatedText ? " " : "") + item.content;
-      if (item.base64 && item.mimeType) {
-        aggregatedMedia.push({
-          base64: item.base64,
-          mime: item.mimeType,
-          type: item.mimeType.startsWith('image') ? 'image' : 'audio'
-        });
-      }
-    }
-
-    console.log(`[WhatsApp Bot] Aggregated content for ${senderPhone}: "${aggregatedText}" [Items: ${aggregatedMedia.length}]`);
-
-    // --- END DEBOUNCING LOGIC ---
-
-    // Hidden reset command for testing
-    const resetKeywords = ["reiniciar", "reset", "borrar memoria", "limpiar chat"];
-    if (resetKeywords.includes(aggregatedText.trim().toLowerCase())) {
-       try {
-           await (prisma as any).whatsAppChat.update({
-             where: { phone: senderPhone },
-             data: { history: [], isProcessing: false }
-           });
-           await sendWhatsAppMessage(remoteJid, "🔄 Memoria borrada con éxito. Empecemos de cero, dime en qué te puedo ayudar.");
-       } catch(e) {}
-       return NextResponse.json({ received: true, status: "reset" });
-    }
-
-    // 0. Check Panic Mode
-    const settings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
-    if (settings?.isPanicModeActive) {
-      await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { isProcessing: false } });
-      await sendWhatsAppMessage(remoteJid, "Actualmente tenemos muchos pedidos en cola. Te avisaremos apenas podamos tomar más pedidos. Gracias por tu comprensión. 🙏");
-      return NextResponse.json({ received: true, status: "panic_mode_active" });
-    }
-
-    // 1. Load active menu
-    const products = await prisma.product.findMany({
-      where: { isActive: true, isSoldOut: false },
-      include: { sizes: true },
-    });
-
-    const menuText = products.map((p) =>
-      `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')
-    ).join('\n\n');
-
-    // 2. Refresh Chat Record (Daily Reset Logic)
-    const colombiaNow = new Date().toLocaleString("en-US", { timeZone: "America/Bogota" });
-    const todayStr = new Date(colombiaNow).toDateString();
-
-    let history: any[] = (chat?.history as any[]) || [];
-    const lastUpdateStr = new Date(chat.updatedAt.toLocaleString("en-US", { timeZone: "America/Bogota" })).toDateString();
-    
-    if (lastUpdateStr !== todayStr) {
-      console.log(`[WhatsApp Bot] New day detected for ${senderPhone}. Resetting history.`);
-      history = [];
-    }
-
-    // 3. Prepare Gemini Prompt
-    const nowBogota = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
-    const currentHour = nowBogota.getHours();
-    const currentMinutes = nowBogota.getMinutes();
-    const timeValue = currentHour + currentMinutes / 60;
-    
-    const isBeforeOpen = timeValue < 10;
-    const isPastDeliveryCutoff = timeValue >= 16;
-    const isPastSixPm = timeValue >= 18; // 6 PM
-    const isBotClosed = timeValue >= 18.5; // 6:30 PM
-    const isPastRecogerCashCutoff = timeValue >= 14; // 2 PM
-    
-    let timeStatusMsg = "";
-    if (isBeforeOpen) {
-      timeStatusMsg = "\n⚠️ ESTADO: CERRADO (abrimos a las 10:00 AM). RECHAZA TODOS LOS PEDIDOS amablemente, informa que abren a las 10:00 AM.";
-    } else if (isBotClosed) {
-      timeStatusMsg = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM). RECHAZA TODOS LOS PEDIDOS amablemente y despídete.";
-    } else if (isPastSixPm) {
-      timeStatusMsg = "\n⚠️ ESTADO: SOLO RECOGER (pasaron las 6:00 PM). RECHAZA DOMICILIOS amablemente. SÓLO ACEPTA pedidos para recoger. REGLA OBLIGATORIA: Pago ÚNICAMENTE por TRANSFERENCIA, y DEBES AVISAR al cliente que debe pasar por su pedido ANTES de las 7:00 PM.";
-    } else if (isPastDeliveryCutoff) {
-      timeStatusMsg = "\n⚠️ ESTADO: SOLO RECOGER (pasaron las 4:00 PM). RECHAZA DOMICILIOS amablemente. SÓLO ACEPTA pedidos para recoger.";
-    }
-
-    if (!isBeforeOpen && !isBotClosed && !isPastSixPm && isPastRecogerCashCutoff) {
-      timeStatusMsg += "\n⚠️ REGLA OBLIGATORIA: Ya son más de las 2:00 PM. Si el pedido es PARA RECOGER, es OBLIGATORIO exigir que el pago sea por TRANSFERENCIA y pedir el comprobante ANTES de considerar la orden completa.";
-    }
-
-    const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
-    const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.${timeStatusMsg}
-
-INVENTARIO ACTUAL Y PRECIOS:
-${menuText}
-
-PRECIOS DE DOMICILIO POR BARRIO:
-- Rockefeller, Modelo, Maeugenia, Bellavista, Loma del Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio: $3.000
-- Cristal, Oriente, Transformadora, Galeón, Miraflores, Masamorra, San Luis, Kennedy, El 5: $4.000
-- Marina, R9, Laureles, Inmaculada, Ciudadela 1 y 2: $5.000
-- Ciudadela 3 y 4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Todo Isla: $6.000
-- Éxito, Triunfo, Nueva Grana, Brisas Del Mar: $7.000
-- Colinas C.: $8.000
-
-- Super familiar: Para 6 o 7 personas.
- 
-CÁLCULO DE TOTALES (REGLA DE ORO):
- - Suma el precio de CADA producto según su tamaño.
- - Suma el costo de domicilio según el barrio. SI ES PARA RECOGER, EL COSTO DE DOMICILIO ES $0.
- - El TOTAL final que menciones debe ser la suma EXACTA de (Productos + Domicilio). Si es recoger, el total es solo el de los productos.
- - NO inventes precios. Si un producto no está en la lista, díselo al cliente.
- - Muestra siempre el desglose si el cliente lo pide. SIN MENCIONAR DOMICILIO SI ES PARA RECOGER.
-
-REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
-1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez (historial completamente vacío), DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si el historial tiene la marca "PEDIDO_COMPLETADO" NO vuelvas a saludar. Si el cliente PIDE VER EL MENÚ / LA CARTA, usa el intent "send_menu" y una respuesta breve.
-2. **BREVEDAD (REGLA CRÍTICA)**: Tus respuestas deben ser EXTREMADAMENTE CORTAS. Máximo 1-2 líneas. NUNCA uses frases de cortesía como "¡Claro!", "¡Con gusto!", "Entendido, tomaré nota de eso". Si el cliente da información adicional (ej: "que llegue después de las 12"), responde solamente "Listo." o "Ok." y nada más. Si ya tienes todos los datos para el pedido, procede directamente sin agregar relleno.
-3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
-3.1. **ARROZ CHINO (OBLIGATORIO)**: Si el cliente pide "Arroz Chino", DEBES preguntar si lo desea con Costilla, Chuleta o Tradicional (Solo).
-4. **RECOLECCIÓN DE DATOS**: OBLIGATORIO: Cuando el cliente defina el pedido, pregúntale si es para Domicilio o Pasar a Recoger.
-   - Si es para Domicilio: Pide Nombre, Teléfono, Dirección, y método de pago (Efectivo, transferencia o dividido).
-   - Si es Pasar a Recoger: Pide SOLO Nombre, Teléfono y método de pago. NO PIDAS DIRECCIÓN en este caso, es innecesaria.
-5. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
-6. **CIERRE CON EFECTIVO**: Si el pago incluye Efectivo, al crear el 'order' despídete:
-    - Si es domicilio EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
-    - Si es recoger EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Gracias por comprar en el buen comer." (NUNCA digas 'con el domicilio' si es para recoger).
-7. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia pero AÚN NO ha enviado la imagen, dile EXACTAMENTE: "El total son [TOTAL]. Por favor realizar transferencia al Nequi 3173941189 o a la llave @nequilui57354. Envía el comprobante por este medio para verificar y procesar tu pedido inmediatamente."
-8. **VALIDACIÓN DE COMPROBANTES (IMÁGENES)**: Cuando el cliente envíe una captura de pantalla de transferencia, DEBES analizarla cuidadosamente y verificar:
-    - **Valor**: Debe coincidir exactamente con el total del pedido (+ domicilio).
-    - **Destino**: Debe ser el Nequi 3173941189 o la llave @nequilui57354 (ignora mayúsculas/minúsculas).
-    - **Fecha**: Debe ser la fecha de hoy (${currentDate}).
-    - Si la imagen es válida y el total coincide, usa el intent "order". Como 'replyText' DEBES responder EXACTAMENTE: "Comprobante recibido correctamente. ✅ Tu pedido está confirmado." (NUNCA le pidas que envíe el comprobante otra vez).
-    - Si la imagen NO es válida o el valor es menor, informa el error específico al cliente amablemente.
-9. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó en mensajes anteriores del chat. Usa esa información para llenar el JSON de orderData.
-9. **TIEMPOS DE ENTREGA (Obligatorio en todos los "order")**:
-   - Si es domicilio, al final añade: "Su pedido demorara 50-60 minutos aproximadamente."
-   - Si es recoger, al final añade: "Puedes pasar en unos 20-30 minutos aproximadamente."
-10. **NOTAS POR PLATO**: Si piden retirar o agregar algo a un plato particular (ej. "sin cebolla"), SIEMPRE ponlo en la propiedad "notes" del item.
-11. **CAMBIO DE PEDIDO**: Si el cliente cambia su pedido en medio del chat, ajusta mentalmente la orden sin problema.
-12. **DIRECCIÓN**: Aunque preguntemos "Direccion", si el cliente solo da un barrio (como es costumbre en Buenaventura), acéptalo sin exigir calles exactas.
-13. **COMPROBANTE SIN PEDIDO PREVIO (REGLA CRÍTICA)**: Si recibes una imagen de comprobante de pago pero el historial de conversación está VACÍO o NO tiene un pedido en curso, significa que el cliente tomó el pedido por llamada. En ese caso:
-    - SOLO revisa que el destinatario sea el Nequi 3173941189 o la llave @nequilui57354.
-    - Si el destinatario es correcto, responde ÚNICAMENTE: "Perfecto, comprobante recibido. ✅"
-    - Si el destinatario es incorrecto, avísale amablemente.
-    - NUNCA uses intent "order" en este caso. Siempre usa intent "chat".
-14. **ESTADO DEL PEDIDO**: Si el cliente pregunta "¿Dónde va el domicilio?", "¿Cuánto falta?", o cualquier duda sobre el tiempo de entrega una vez confirmado el pedido, responde únicamente: "Ya está en camino. ✅"
-15. **NOTAS DE VOZ**: Si recibes el texto "El usuario ha enviado un mensaje de voz pidiendo algo.", significa que el cliente mandó un audio. RECHAZA EL AUDIO respondiendo EXACTAMENTE: "Hola, por políticas del restaurante no tomamos pedidos por notas de voz, únicamente por texto." y NO continues con el pedido hasta que escriba. NUNCA inventes productos si solo recibes este texto.
-
-FORMATO DE SALIDA (ESTRICTO JSON):
-TU RESPUESTA SIEMPRE DEBE SER UN SÓLO OBJETO JSON VÁLIDO. NO ESCRIBAS TEXTO FUERA DEL JSON.
-ESTRUCTURA:
-{
-  "intent": "chat" | "order" | "send_menu",
-  "replyText": "Respuesta usando LOS GUIONES EXACTOS",
-  "orderData": {    // SÓLO REQUERIDA si intent es "order", de lo contrario no la envíes
-    "customerName": "Nombre",
-    "customerAddress": "Dirección o barrio indicado (y si es Recoger pon 'Pasa a recoger')",
-    "customerPhone": "Teléfono que dé el cliente, si no da usa el de whatsapp",
-    "deliveryFee": 3000, // Costo de envío según la tabla de barrios
-    "notes": "Notas del pago, ej: EFECTIVO o TRANSFERENCIA",
-    "items": [
-      {
-        "productName": "Nombre exacto del producto según menú",
-        "sizeName": "Nombre exacto del tamaño según menú",
-        "quantity": 1,
-        "notes": "Cualquier indicación u observación sobre el plato (ej: sin cebolla). Pon null si no hay notas."
-      }
-    ]
-  }
-}
-
-Usa intent "chat" para conversar, "order" para el cierre final y "send_menu" para enviar la carta. En replyText informa siempre del total final (productos + domicilio) al usar "order".`;
-
-    // 4. Build chat context and run Gemini
-
-
-    const messageParts: any[] = [];
-    if (aggregatedText) messageParts.push({ text: aggregatedText });
-    
-    // Add all media items that were buffered
-    for (const media of aggregatedMedia) {
-      if (media.type === 'image') {
-        messageParts.push({ text: "[Imagen adjunta]" });
-      } else {
-        messageParts.push({ text: "El usuario ha enviado un mensaje de voz pidiendo algo." });
-      }
-      
-      messageParts.push({
-        inlineData: {
-          mimeType: media.mime,
-          data: media.base64
+      while (loops < 5) {
+        if (isFirstIteration) {
+          await new Promise(r => setTimeout(r, 4000));
+          isFirstIteration = false;
         }
-      });
-    }
 
+        const bufferItems = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone }, orderBy: { createdAt: 'asc' } });
+        if (bufferItems.length === 0) break;
 
+        // Collect IDs to delete LATER
+        const itemIds = bufferItems.map((i: any) => i.id);
 
-    // 5. Save Preliminary History (User message only)
-    const historyUserText = aggregatedText + (aggregatedMedia.length > 0 ? ` [Contenía ${aggregatedMedia.length} archivos multimedia]` : "");
-    const preliminaryHistory = [
-      ...history,
-      { role: "user", text: historyUserText }
-    ];
+        let aggregatedText = "";
+        const aggregatedMedia: any[] = [];
+        for (const item of bufferItems) {
+          if (item.content) aggregatedText += (aggregatedText ? " " : "") + item.content;
+          if (item.base64) aggregatedMedia.push({ base64: item.base64, mime: item.mimeType, type: item.mimeType.startsWith('image') ? 'image' : 'audio' });
+        }
 
-    // Update DB with user message immediately to prevent context loss if AI fails
-    await (prisma as any).whatsAppChat.update({
-      where: { phone: senderPhone },
-      data: { history: preliminaryHistory.slice(-50) }
-    });
+        if (!aggregatedText && aggregatedMedia.length === 0) break;
 
-    console.log(`[WhatsApp Bot] Processing with Gemini for ${senderPhone}...`);
-    
-    let geminiResponse: any = null;
-    let retries = 3;
-    let delay = 1000;
-
-    while (retries > 0) {
-      try {
-        // Sanitize history: Gemini requires history to start with 'user' role
-        const geminiHistory = preliminaryHistory.slice(0, -1)
-          .filter((msg, i, arr) => {
-            if (msg.role === "model" && i === 0) return false;
-            return true;
-          })
-          .map(msg => ({
-            role: msg.role,
-            parts: [{ text: msg.text }]
-          }));
-
-        // Start fresh session per attempt to be safe with state
-        const chatSession = model.startChat({
-          systemInstruction: {
-            role: "system",
-            parts: [{ text: systemInstruction }]
-          },
-          generationConfig: {
-            responseMimeType: "application/json"
-          },
-          history: geminiHistory
-        });
-
-        const result = await chatSession.sendMessage(messageParts);
-        const responseText = result.response.text();
-        console.log(`[WhatsApp Bot] Gemini response: ${responseText.substring(0, 100)}...`);
-
-        // Parse JSON
-        const cleanJson = responseText.replace(/```json\n?|```\n?/g, "").trim();
-        geminiResponse = JSON.parse(cleanJson);
-        break; // Success!
-      } catch (err: any) {
-        retries--;
-        console.error(`[WhatsApp Bot] Gemini Attempt failed (${3 - retries}/3):`, err.message);
+        // Fetch Fresh Data
+        const products = await prisma.product.findMany({ where: { isActive: true, isSoldOut: false }, include: { sizes: true } });
+        const menuText = products.map((p) => `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')).join('\n\n');
         
-        if (retries > 0 && (err.message.includes("503") || err.message.includes("high demand") || err.message.includes("fetch failed"))) {
-           console.log(`[WhatsApp Bot] Retrying in ${delay}ms...`);
-           await new Promise(resolve => setTimeout(resolve, delay));
-           delay *= 2;
-           continue;
+        const currentChat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
+        let history: any[] = (currentChat?.history as any[]) || [];
+        
+        // --- HISTORY EXPIRATION (2 HOURS) ---
+        const lastUpdate = new Date(currentChat!.updatedAt).getTime();
+        const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+        if (lastUpdate < twoHoursAgo) {
+          console.log(`[WhatsApp Bot] History expired (>2h) for ${senderPhone}. Resetting.`);
+          history = [];
         }
 
-        if (retries === 0) {
-           console.error("[WhatsApp Bot] Max retries reached or fatal error.");
-           // SILENT FAILURE for customer (to avoid annoying technical messages)
-           // The history is already saved, so mesero can see it and bot will pick it up on next message.
-           return NextResponse.json({ received: true, error: "ai_failure" });
+
+        // Timings
+        const nowBogota = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
+        const timeValue = nowBogota.getHours() + nowBogota.getMinutes() / 60;
+        const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
+        
+        let timeStatus = "";
+        if (timeValue < 10) timeStatus = "\n⚠️ ESTADO: CERRADO (abrimos a las 10:00 AM). RECHAZA PEDIDOS.";
+        else if (timeValue >= 18.5) timeStatus = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM).";
+        else if (timeValue >= 18) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). PAGO TRANSFERENCIA OBLIGATORIO.";
+        else if (timeValue >= 16) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 4:00 PM).";
+
+        const systemInstruction = `Eres el asistente de "El buen comer" en Buenaventura. Fecha: ${currentDate}. Atendiendo por WhatsApp.${timeStatus}
+        MENU:\n${menuText}
+        REGLAS:
+        1. Saluda breve si el historial está vacío. 
+        2. Respuestas BREVES (1-2 líneas).
+        3. Pide tamaño si falta. Para Arroz Chino pide: Costilla, Chuleta o Tradicional.
+        4. Pregunta Domicilio o Recoger. 
+           - Domicilio: Cuesta $3.000-$8.000 según barrio. Pide Nombre, Telf, Dirección, Pago.
+           - Recoger: $0 domicilio. Pide Nombre, Telf, Pago.
+        5. Pagos: Efectivo o Transferencia (Nequi 3173941189).
+        6. Si envían foto de transferencia: valida valor, destino y fecha. Si ok, confirma pedido.
+        7. JSON SIEMPRE: { "intent": "chat"|"order"|"send_menu", "replyText": "...", "orderData": {...} }`;
+
+        const messageParts: any[] = [{ text: aggregatedText }];
+        for (const m of aggregatedMedia) {
+          messageParts.push({ text: m.type === 'image' ? "[Imagen]" : "El usuario mandó un audio." });
+          messageParts.push({ inlineData: { mimeType: m.mime, data: m.base64 } });
         }
-      }
-    }
 
-    if (!geminiResponse || !geminiResponse.intent || !geminiResponse.replyText) {
-      console.error("[WhatsApp Bot] Gemini response missing intent or replyText:", geminiResponse);
-      return NextResponse.json({ received: true, error: "invalid_format" });
-    }
+        const preliminaryHistory = [...history, { role: "user", text: aggregatedText + (aggregatedMedia.length > 0 ? " [Contenía multimedia]" : "") }];
+        await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: preliminaryHistory.slice(-50) } });
 
-    // Force send_menu intent if keywords found in user message
-    const menuKeywords = ["menú", "menu", "carta", "la carta", "la carta", "el menú"];
-    const includesMenu = menuKeywords.some(kw => messageText.toLowerCase().includes(kw));
-    if (includesMenu && geminiResponse.intent === "chat") {
-      console.log(`[WhatsApp Bot] Forcing send_menu intent due to keywords in: "${messageText}"`);
-      geminiResponse.intent = "send_menu";
-    }
-
-    // 6. Save Final History (Model response)
-    const finalHistory = [
-      ...preliminaryHistory,
-      { role: "model", text: JSON.stringify(geminiResponse) }
-    ].slice(-50); 
-
-    await (prisma as any).whatsAppChat.update({
-      where: { phone: senderPhone },
-      data: { 
-        history: finalHistory,
-        isProcessing: false // RELEASE LOCK
-      }
-    });
-    console.log(`[WhatsApp Bot] History finalized for ${senderPhone}`);
-
-    // 6. Send Response to User via WhatsApp
-    if (geminiResponse.intent === "send_menu") {
-       console.log(`[WhatsApp Bot] Intent: send_menu detected. Sending media to ${remoteJid}...`);
-       const success = await sendWhatsAppMedia(remoteJid || "", undefined, geminiResponse.replyText);
-       if (!success) {
-          console.error("[WhatsApp Bot] Failed to send menu via sendWhatsAppMedia");
-       }
-    } else {
-       await sendWhatsAppMessage(remoteJid || "", geminiResponse.replyText);
-    }
-
-    // 7. If intent is order, create the Prisma order and deduct inventory
-    if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items.length > 0) {
-
-      // Code-level guard: block transfer orders without an image (receipt) in this request
-      const notes = (geminiResponse.orderData.notes || "").toLowerCase();
-      const isTransferOrder = notes.includes("transferencia") || notes.includes("nequi");
-      if (isTransferOrder && aggregatedMedia.filter(m => m.type === 'image').length === 0) {
-        console.warn(`[WhatsApp Bot] BLOCKED transfer order without receipt image for ${senderPhone}`);
-        await sendWhatsAppMessage(remoteJid || "", "Necesito el comprobante de transferencia para confirmar el pedido. Por favor envíalo.");
-        return NextResponse.json({ received: true, error: "transfer_without_receipt" });
-      }
-
-      // Priority: use the currently logged-in waiter. Fallback to ADMIN.
-      const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
-      const activeWaiterId = settings?.activeWaiterId;
-
-      const systemUser = activeWaiterId
-        ? await prisma.user.findUnique({ where: { id: activeWaiterId } })
-        : null;
-      
-      const fallbackUser = systemUser ?? (
-        await prisma.user.findFirst({ where: { role: "ADMIN" } }) ||
-        await prisma.user.findFirst({ where: { role: "CASHIER" } })
-      );
-
-      if (!fallbackUser) {
-        console.error("[WhatsApp] No user found to assign order");
-        return NextResponse.json({ received: true, error: "no_system_user" });
-      }
-
-      console.log(`[WhatsApp Bot] Assigning order to: ${fallbackUser.name} (ID: ${fallbackUser.id})`);
-
-      const orderData = geminiResponse.orderData;
-      const deliveryFee = Number(orderData.deliveryFee) || 0;
-      let orderTotal = 0; // START AT 0, NO DOMICILIO IN TOTAL!
-
-      // Server-side validation: reject incomplete orders
-      const resolvedPhone = orderData.customerPhone || senderPhone;
-      if (!orderData.customerName || !resolvedPhone || resolvedPhone === "Desconocido") {
-        console.error(`[WhatsApp Bot] BLOCKED incomplete order - missing name or phone. Name: "${orderData.customerName}", Phone: "${resolvedPhone}"`);
-        // Ask gemini to re-collect missing data (don't create the order)
-        await sendWhatsAppMessage(remoteJid || "", "Necesito tu nombre y teléfono para confirmar el pedido.");
-        return NextResponse.json({ received: true, error: "incomplete_order_data" });
-      }
-
-      // Match items strictly with DB to get IDs and prices
-      const validItems: { productId: number; sizeName: string; quantity: number; price: number; notes: string | null }[] = [];
-      for (const reqItem of orderData.items) {
-        const dbProduct = products.find(p => p.name.toLowerCase() === reqItem.productName.toLowerCase());
-        if (dbProduct) {
-          const dbSize = dbProduct.sizes.find(s => s.name.toLowerCase() === reqItem.sizeName.toLowerCase()) || dbProduct.sizes[0];
-          const price = Number(dbSize.price);
-          orderTotal += price * reqItem.quantity;
-          validItems.push({
-            productId: dbProduct.id,
-            sizeName: dbSize.name,
-            quantity: reqItem.quantity,
-            price: price,
-            notes: reqItem.notes || null
-          });
-        }
-      }
-
-      // Ensure phone number strips country code 57 for DB creation
-      let finalPhone = orderData.customerPhone || senderPhone;
-      if (finalPhone.startsWith("57") && finalPhone.length > 10) {
-         finalPhone = finalPhone.substring(2);
-      }
-
-      // Check if there is an existing active order for this customer
-      const existingActiveOrder = await prisma.order.findFirst({
-        where: {
-          customerPhone: finalPhone,
-          status: { in: ["PENDING", "PREPARING"] },
-          createdAt: { gte: new Date(Date.now() - 4 * 60 * 60 * 1000) } // last 4 hours
-        },
-        orderBy: { id: "desc" },
-        include: { items: true }
-      });
-
-      if (validItems.length > 0) {
-        let orderIdToReturn = -1;
-        const order = await prisma.$transaction(async (tx) => {
-          const isTakeaway = (orderData.customerAddress && orderData.customerAddress.toLowerCase().includes("recoger"));
-          let finalCustomerName = orderData.customerName || pushName || `WA: ${senderPhone}`;
-          if (isTakeaway) {
-             finalCustomerName = `Recoger - ${finalCustomerName.replace(/^Recoger - /, '')}`;
-          }
-
-          let finalOrder;
-          if (existingActiveOrder) {
-             // 1. Restore inventory for old items
-             for (const oldItem of existingActiveOrder.items) {
-               const recipes = await tx.recipe.findMany({
-                 where: { productId: oldItem.productId, sizeName: oldItem.sizeName }
-               });
-               for (const recipe of recipes) {
-                 const restoreAmt = Number(recipe.quantity) * Number(oldItem.quantity);
-                 await tx.ingredient.update({
-                   where: { id: recipe.ingredientId },
-                   data: { stock: { increment: restoreAmt } }
-                 });
-                 // Log restoration
-                 await tx.inventoryLog.create({
-                   data: { ingredientId: recipe.ingredientId, amount: restoreAmt, type: 'ADJUSTMENT', reason: `Modificación WA Orden #${existingActiveOrder.id} (Reversión)` }
-                 });
-               }
-             }
-             // 2. Clear old items
-             await tx.orderItem.deleteMany({ where: { orderId: existingActiveOrder.id } });
-             
-             // 3. Update the order
-             finalOrder = await tx.order.update({
-               where: { id: existingActiveOrder.id },
-               data: {
-                 customerName: finalCustomerName,
-                 customerAddress: orderData.customerAddress || null,
-                 notes: orderData.notes || null,
-                 source: isTakeaway ? "TAKEAWAY" : "DELIVERY",
-                 total: orderTotal,
-                 deliveryFee: deliveryFee,
-                 items: {
-                   create: validItems.map(vi => ({
-                     productId: vi.productId,
-                     sizeName: vi.sizeName,
-                     quantity: vi.quantity,
-                     price: vi.price,
-                     notes: vi.notes,
-                   })),
-                 },
-               },
-               include: { items: { include: { product: true } } },
-             });
-          } else {
-             // Create New Order
-             finalOrder = await tx.order.create({
-               data: {
-                 userId: fallbackUser.id,
-                 customerName: finalCustomerName,
-                 customerPhone: finalPhone,
-                 customerAddress: orderData.customerAddress || null,
-                 notes: orderData.notes || null,
-                 source: isTakeaway ? "TAKEAWAY" : "DELIVERY",
-                 status: "PENDING",
-                 total: orderTotal,
-                 deliveryFee: deliveryFee,
-                 items: {
-                   create: validItems.map(vi => ({
-                     productId: vi.productId,
-                     sizeName: vi.sizeName,
-                     quantity: vi.quantity,
-                     price: vi.price,
-                     notes: vi.notes,
-                   })),
-                 },
-               } as any,
-               include: { items: { include: { product: true } } },
-             });
-          }
-
-          // Automated Stock Deduction for the final current items
-          for (const item of validItems) {
-            const recipes = await tx.recipe.findMany({
-              where: {
-                productId: item.productId,
-                sizeName: item.sizeName
-              }
+        // Gemini Call
+        let geminiResponse: any = null;
+        let tries = 3;
+        while (tries > 0) {
+          try {
+            const session = model.startChat({ 
+              systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
+              generationConfig: { responseMimeType: "application/json" },
+              history: preliminaryHistory.slice(0, -1).map(h => ({ role: h.role, parts: [{ text: h.text }] }))
             });
+            const res = await session.sendMessage(messageParts);
+            geminiResponse = JSON.parse(res.response.text().replace(/```json\n?|```\n?/g, "").trim());
+            break;
+          } catch(e) { tries--; await new Promise(r => setTimeout(r, 1000)); }
+        }
 
-            for (const recipe of recipes) {
-              const deduction = Number(recipe.quantity) * Number(item.quantity);
-              await tx.ingredient.update({
-                where: { id: recipe.ingredientId },
-                data: { stock: { decrement: deduction } }
-              });
-              await tx.inventoryLog.create({
-                data: {
-                  ingredientId: recipe.ingredientId,
-                  amount: deduction,
-                  type: 'OUT',
-                  reason: `WhatsApp Bot Orden #${finalOrder.id}`
+        if (geminiResponse?.replyText) {
+          if (geminiResponse.intent === "send_menu") await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
+          else await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+
+          const finalHistory = [...preliminaryHistory, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50);
+          await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistory } });
+
+          // Order Logic
+          if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
+            const od = geminiResponse.orderData;
+            const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
+            const user = (settings?.activeWaiterId ? await prisma.user.findUnique({ where: { id: settings.activeWaiterId } }) : null) || await prisma.user.findFirst({ where: { role: "ADMIN" } });
+            
+            const validItems: any[] = [];
+            let total = 0;
+            for (const i of od.items) {
+              const p = products.find(x => x.name.toLowerCase() === i.productName.toLowerCase());
+              if (p) {
+                const s = p.sizes.find(z => z.name.toLowerCase() === i.sizeName.toLowerCase()) || p.sizes[0];
+                validItems.push({ productId: p.id, sizeName: s.name, quantity: i.quantity, price: Number(s.price), notes: i.notes || null });
+                total += Number(s.price) * i.quantity;
+              }
+            }
+
+            if (validItems.length > 0 && user) {
+              let pPhone = od.customerPhone || senderPhone;
+              if (pPhone.startsWith("57") && pPhone.length > 10) pPhone = pPhone.substring(2);
+
+              const existing = await prisma.order.findFirst({ where: { customerPhone: pPhone, status: { in: ["PENDING", "PREPARING"] }, createdAt: { gte: new Date(Date.now() - 4 * 3600000) } }, include: { items: true } });
+
+              await prisma.$transaction(async (tx) => {
+                let name = od.customerName || pushName || `WA: ${senderPhone}`;
+                if (od.customerAddress?.toLowerCase().includes("recoger")) name = `Recoger - ${name.replace(/^Recoger - /, '')}`;
+
+                if (existing) {
+                  for (const oi of existing.items) {
+                    const recs = await tx.recipe.findMany({ where: { productId: oi.productId, sizeName: oi.sizeName } });
+                    for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { increment: Number(r.quantity) * oi.quantity } } });
+                  }
+                  await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
+                  await tx.order.update({ where: { id: existing.id }, data: { customerName: name, customerAddress: od.customerAddress, notes: od.notes, total: total + (Number(od.deliveryFee) || 0), deliveryFee: Number(od.deliveryFee) || 0, items: { create: validItems } } });
+                } else {
+                  await tx.order.create({ data: { userId: user.id, customerName: name, customerPhone: pPhone, customerAddress: od.customerAddress, source: 'WHATSAPP', total: total + (Number(od.deliveryFee) || 0), deliveryFee: Number(od.deliveryFee) || 0, notes: od.notes, items: { create: validItems } } });
+                }
+
+                for (const vi of validItems) {
+                  const recs = await tx.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
+                  for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { decrement: Number(r.quantity) * vi.quantity } } });
                 }
               });
             }
           }
-
-          orderIdToReturn = finalOrder.id;
-          return finalOrder;
-        });
-
-        // Do NOT wipe history so that user can modify the order continuously in the future
-        console.log(`[WhatsApp Bot] Order #${orderIdToReturn} generated/updated completely.`);
-
-      } else {
-        console.error("[WhatsApp Bot] Failed to match any items from the JSON payload:", orderData.items);
+        }
+        loops++;
+        // 4. Finally, clear the buffered messages we just processed
+        await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
+        await new Promise(r => setTimeout(r, 500));
       }
+    } finally {
+      await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { isProcessing: false } });
     }
-
-    return NextResponse.json({ received: true, status: "processed" });
-  } finally {
-    // 8. Release lock even if something crashed
-    try {
-      await (prisma as any).whatsAppChat.update({
-        where: { phone: senderPhone },
-        data: { isProcessing: false }
-      });
-      console.log(`[WhatsApp Bot] Lock released for ${senderPhone}`);
-    } catch (e) {
-      console.error(`[WhatsApp Bot] Failed to release lock for ${senderPhone}:`, e);
+  } catch (error: any) {
+    console.error("[WhatsApp Webhook] General Error:", error);
+    const isT = error.message?.includes("503") || error.message?.includes("Service Unavailable") || error.message?.includes("high demand") || error.message?.includes("fetch failed");
+    if (!isT && Date.now() - lastAlertTimestamp > ALERT_COOLDOWN) {
+      lastAlertTimestamp = Date.now();
+      try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[⚠️ ALERT BOT]\nError: ${error.message}\nCliente: ${senderPhone}`); } catch(e) {}
     }
   }
-} catch (error: any) {
-  console.error("[WhatsApp Webhook] General Error:", error);
-  
-  // Suppression: Don't alert admin for known transient Gemini errors (already handled by retries/silence)
-  const isTransient = error.message?.includes("503") || 
-                      error.message?.includes("Service Unavailable") || 
-                      error.message?.includes("high demand") ||
-                      error.message?.includes("fetch failed");
-
-  if (isTransient) {
-    return NextResponse.json({ received: true, error: "transient_ai_failure" });
-  }
-
-  // Throttling: Only notify admin once every 15 minutes for other errors
-  const now = Date.now();
-  if (now - lastAlertTimestamp > ALERT_COOLDOWN) {
-    lastAlertTimestamp = now;
-    const ADMIN_PHONE = "573223119008";
-    try {
-       const errorPrefix = "[⚠️ ALERT BOT]";
-       const errorMsg = `${errorPrefix}\n\nError detectado: ${error.message}\nCliente afectado: ${senderPhone || "Desconocido"}\n\nEste aviso se silenciará por 15 minutos.`;
-       await sendWhatsAppMessage(`${ADMIN_PHONE}@s.whatsapp.net`, errorMsg);
-    } catch(e) {
-       console.error("[WhatsApp Bot] Failed to notify admin:", e);
-    }
-  } else {
-    console.log(`[WhatsApp Bot] Alert throttled (last alert was < 15m ago)`);
-  }
-
-  return NextResponse.json({ received: true, error: error.message });
-}
+  return NextResponse.json({ received: true });
 }
