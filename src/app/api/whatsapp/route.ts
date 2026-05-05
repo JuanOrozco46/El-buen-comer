@@ -308,10 +308,16 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
             const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
-            // Fallback securely to ANY existing user if active waiter or admin is not found
+            // Try to use the active waiter logged into the POS, but ONLY if they have the WAITER role
             let user: any = null;
-            if (settings?.activeWaiterId) user = await prisma.user.findUnique({ where: { id: settings.activeWaiterId } });
-            if (!user) user = await prisma.user.findFirst({ where: { role: "CASHIER" } });
+            if (settings?.activeWaiterId) {
+              user = await prisma.user.findFirst({
+                where: { id: settings.activeWaiterId, role: "WAITER" }
+              });
+            }
+            // Fallback to the first available WAITER in the database
+            if (!user) user = await prisma.user.findFirst({ where: { role: "WAITER" } });
+            // Absolute fallback to ANY user (safety) if no Waiters are found
             if (!user) user = await prisma.user.findFirst(); 
             
             const validItems: any[] = [];
