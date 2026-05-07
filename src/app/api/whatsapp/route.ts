@@ -197,7 +197,7 @@ ${menuText}
 PRECIOS DE DOMICILIO POR BARRIO:
 - Rockefeller, Modelo, Maeugenia, Bellavista, Loma del Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio: $3.000
 - Cristal, Oriente, Transformadora, Galeón, Miraflores, Masamorra, San Luis, Kennedy, El 5: $4.000
-- Marina, R9, Laureles, Inmaculada, Ciudadela 1 y 2, Campin: $5.000
+- Marina, R9, Laureles, Inmaculada, Ciudadela 1 y 2, Campin, Kilometro 5: $5.000
 - Ciudadela 3 y 4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Todo Isla, Cascajal: $6.000
 - Éxito, Triunfo, Nueva Grana, Brisas Del Mar: $7.000
 - Colinas C.: $8.000
@@ -209,7 +209,7 @@ PRECIOS DE DOMICILIO POR BARRIO:
  
 CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
  - Suma el precio de CADA producto según su tamaño + costo de domicilio.
- - **BARRIO DESCONOCIDO**: Si el cliente menciona un barrio que NO ESTÁ en la lista superior, DEBES responder exactamente: "Ya te confirmamos cuanto es con el domicilio". NO uses el intent "order" en este caso hasta que el domicilio sea aclarado.
+ - **BARRIO DESCONOCIDO**: Si el cliente menciona un barrio que NO ESTÁ en la lista superior, usa un costo de domicilio estándar de $5.000. NO digas "Ya te confirmamos cuanto es", simplemente procede con el pedido usando ese valor.
  - **COSTO MANUAL (IMPORTANTE)**: Revisa el historial de mensajes. Si ves que un humano (model) envió un mensaje que es simplemente un número (ej: "5500") después de que preguntaras por un barrio desconocido, interpreta ese número como el 'deliveryFee' para ese pedido y procede.
  - El TOTAL final que menciones debe ser la suma EXACTA de (Productos + Domicilio). Si es recoger, el total es solo el de los productos ($0 domicilio).
  - NO inventes precios. Si un producto no está en la lista, díselo al cliente.
