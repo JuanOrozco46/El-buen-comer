@@ -223,7 +223,7 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
    - "Arroz Chino" + "Tradicional" o "Solo" -> Usa productName: "Arroz Chino"
    - "Arroz Chino" + "Costilla" -> Usa productName: "Arroz con Costilla" (NO agregues "Costilla (Adición)")
    - "Arroz Chino" + "Chuleta" -> Usa productName: "Arroz con Chuleta" (NO agregues "Chuleta (Adición)")
-   - Solo usa productos de la categoría "Adiciones" si el cliente pide explícitamente una "adición", "extra" o "porción adicional" de algo.
+   - Solo usa productos de la categoría "Adiciones" si el cliente pide explícitamente una "adición", "extra" o "porción adicional" de algo. Si el cliente pide un ingrediente que ya es parte del plato pero lo pide "aparte" (ej: "chicharrón aparte", "costilla aparte"), NO lo cobres como adición, ponlo como una nota en el producto.
 4. **RECOLECCIÓN DE DATOS (OBLIGATORIO - REGLA DE ORO)**: NO puedes usar el intent "order" NI confirmar el pedido hasta que tengas los CUATRO (4) datos siguientes:
    a) Nombre del cliente.
    b) Teléfono de contacto.
