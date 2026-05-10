@@ -164,6 +164,7 @@ export async function POST(req: Request) {
 
         // Fetch Fresh Data
         const products = await prisma.product.findMany({ where: { isActive: true, isSoldOut: false }, include: { sizes: true } });
+        const globalSettings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
         const menuText = products.map((p) => `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')).join('\n\n');
         
         const currentChat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
@@ -184,7 +185,8 @@ export async function POST(req: Request) {
         const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
         
         let timeStatus = "";
-        if (timeValue < 9) timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 9:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
+        if (globalSettings?.isPanicModeActive) timeStatus = "\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. Diles EXACTAMENTE a los clientes que estamos saturados de pedidos y que apenas baje el flujo, volveremos a tomar su solicitud. NO USES EL INTENT ORDER.";
+        else if (timeValue < 9) timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 9:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
         else if (timeValue >= 18.5) timeStatus = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM).";
         else if (timeValue >= 18) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). PAGO TRANSFERENCIA OBLIGATORIO.";
         else if (timeValue >= 16) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 4:00 PM).";
