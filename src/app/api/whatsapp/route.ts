@@ -185,7 +185,7 @@ export async function POST(req: Request) {
         const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
         
         let timeStatus = "";
-        if (globalSettings?.isPanicModeActive) timeStatus = "\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. Diles EXACTAMENTE a los clientes que estamos saturados de pedidos y que apenas baje el flujo, volveremos a tomar su solicitud. NO USES EL INTENT ORDER.";
+        if (globalSettings?.isPanicModeActive) timeStatus = "\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. Dile al cliente que estamos muy llenos y pausamos temporalmente los pedidos. IMPORTANTE: Varía siempre la respuesta, no repitas el mismo mensaje exacto (imagina y usa al menos 15 formas o variaciones distintas y naturales de decirlo, por ejemplo: 'Dame unos minutos que estamos a tope...', 'En este momento estamos sacando muchos pedidos, apenas respiremos te atiendo...', 'Hola, por el momento pausamos porque estamos full...', etc.). NO USES EL INTENT ORDER.";
         else if (timeValue < 9) timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 9:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
         else if (timeValue >= 18.5) timeStatus = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM).";
         else if (timeValue >= 18) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). PAGO TRANSFERENCIA OBLIGATORIO.";
