@@ -274,6 +274,12 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         const preliminaryHistory = [...history, { role: "user", text: aggregatedText + (aggregatedMedia.length > 0 ? " [Contenía multimedia]" : "") }];
         await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: preliminaryHistory.slice(-50) } });
 
+        // Ensure history starts with a 'user' message for Gemini
+        let safeHistory = preliminaryHistory.slice(0, -1).map((h: any) => ({ role: h.role, parts: [{ text: h.text }] }));
+        while (safeHistory.length > 0 && safeHistory[0].role !== "user") {
+          safeHistory.shift();
+        }
+
         // Tiered Model Fallback (Primary: 2.5 Flash -> Fallback 1: 3 Flash -> Fallback 2: 2.5 Pro)
         const fallbackModels = ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-pro"];
         let geminiResponse: any = null;
@@ -292,7 +298,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               const session = currentModel.startChat({ 
                 systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
                 generationConfig: { responseMimeType: "application/json" },
-                history: preliminaryHistory.slice(0, -1).map(h => ({ role: h.role, parts: [{ text: h.text }] }))
+                history: safeHistory
               });
               const res = await session.sendMessage(messageParts);
               const textResponse = res.response.text().replace(/```json\n?|```\n?/g, "").trim();
