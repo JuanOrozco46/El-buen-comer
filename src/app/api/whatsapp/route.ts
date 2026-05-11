@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
-import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia } from "../../../lib/whatsapp";
+import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia, sendTypingIndicator } from "../../../lib/whatsapp";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -9,6 +9,16 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 // Throttling for admin alerts to avoid spam
 let lastAlertTimestamp = 0;
 const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
+
+// Global message queue: tracks the last time the bot sent a reply to ANY user
+// This prevents the bot from responding to multiple users at the exact same instant
+let lastGlobalReplyTime = 0;
+const MIN_INTER_USER_DELAY = 3000; // Minimum 3s between replies to different users
+
+// Panic mode rate limiter: sliding window of reply timestamps
+// Prevents mass-sending rejection messages that could trigger WhatsApp spam detection
+let panicModeReplyTimestamps: number[] = [];
+const PANIC_MAX_REPLIES_PER_MINUTE = 10;
 
 /**
  * GET /api/whatsapp
@@ -143,7 +153,10 @@ export async function POST(req: Request) {
 
       while (loops < 5) {
         if (isFirstIteration) {
-          await new Promise(r => setTimeout(r, 4000));
+          // Random delay between 5-20 seconds to appear more human
+          const humanDelay = Math.floor(Math.random() * 15000) + 5000;
+          console.log(`[WhatsApp Bot] Waiting ${humanDelay}ms before processing for ${senderPhone}`);
+          await new Promise(r => setTimeout(r, humanDelay));
           isFirstIteration = false;
         }
 
@@ -185,7 +198,38 @@ export async function POST(req: Request) {
         const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
         
         let timeStatus = "";
-        if (globalSettings?.isPanicModeActive) timeStatus = "\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. Dile al cliente que estamos muy llenos y pausamos temporalmente los pedidos. IMPORTANTE: Varía siempre la respuesta, no repitas el mismo mensaje exacto (imagina y usa al menos 15 formas o variaciones distintas y naturales de decirlo, por ejemplo: 'Dame unos minutos que estamos a tope...', 'En este momento estamos sacando muchos pedidos, apenas respiremos te atiendo...', 'Hola, por el momento pausamos porque estamos full...', etc.). NO USES EL INTENT ORDER.";
+        if (globalSettings?.isPanicModeActive) timeStatus = `\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. NO USES EL INTENT ORDER.
+INSTRUCCIONES PARA VARIAR LA RESPUESTA:
+- NUNCA repitas la misma frase dos veces seguidas.
+- Usa DIFERENTES ESTRUCTURAS cada vez. Aquí tienes ejemplos de estilos distintos (NO los copies textualmente, INSPÍRATE en ellos para crear variaciones nuevas):
+
+Estilo corto y directo:
+  "Hola! Estamos pausados por el momento, apenas abramos pedidos te aviso."
+  "Uy, justo ahora estamos full. Intentá más tardecito."
+
+Estilo con emojis:
+  "Hola 🙌 por ahora estamos a tope y no podemos tomar pedidos 🍳 Apenas se desocupe te cuento!"
+  "En este momento estamos desbordados 😅 Dame un ratico y te confirmo cuando volvamos."
+
+Estilo explicativo:
+  "Hola, gracias por escribirnos. En este momento la cocina está al máximo y pausamos los pedidos temporalmente. Esto no demora mucho, apenas se libere te aviso."
+  "Qué pena contigo, estamos sacando una cantidad de pedidos grande y por ahora no podemos recibir más. En un rato reactivamos."
+
+Estilo informal/coloquial:
+  "Uff parce, estamos hasta el cuello de pedidos 😂 Apenas respiremos te atiendo."
+  "Hermano/a, estamos a reventar. Dame chance un ratico."
+  "Ve, estamos super llenos ahorita. Intentá más tarde que con gusto te atendemos."
+
+Estilo amable con disculpa:
+  "Mil disculpas, en este momento no estamos recibiendo pedidos porque estamos al límite. Apenas podamos te escribo."
+  "Qué pena, justo ahora pausamos pedidos. No te preocupes que en cuanto abramos de nuevo te confirmo."
+
+Estilo con sugerencia de hora:
+  "Hola! Ahorita estamos colapsados. Te recomiendo intentar en unos 30-40 minuticos."
+  "Por ahora estamos cerrados temporalmente por alta demanda. Prueba más tardecito."
+
+- IMPORTANTE: Genera una respuesta NUEVA cada vez, variando longitud, tono, uso de emojis y estructura. No repitas patrones.
+- Usa intent "chat" siempre.`;
         else if (timeValue < 9) timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 9:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
         else if (timeValue >= 18.5) timeStatus = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM).";
         else if (timeValue >= 18) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). PAGO TRANSFERENCIA OBLIGATORIO.";
@@ -320,8 +364,36 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         }
 
         if (geminiResponse?.replyText) {
+          // --- PANIC MODE RATE LIMIT: skip reply if too many rejections sent recently ---
+          if (globalSettings?.isPanicModeActive) {
+            const now = Date.now();
+            panicModeReplyTimestamps = panicModeReplyTimestamps.filter(t => now - t < 60000);
+            if (panicModeReplyTimestamps.length >= PANIC_MAX_REPLIES_PER_MINUTE) {
+              console.log(`[WhatsApp Bot] Panic rate limit reached (${PANIC_MAX_REPLIES_PER_MINUTE}/min). Skipping reply to ${senderPhone}`);
+              break; // Exit the processing loop silently
+            }
+            panicModeReplyTimestamps.push(now);
+          }
+
+          // --- GLOBAL QUEUE: wait if another reply was sent too recently ---
+          const now2 = Date.now();
+          const timeSinceLastReply = now2 - lastGlobalReplyTime;
+          if (timeSinceLastReply < MIN_INTER_USER_DELAY) {
+            const extraWait = MIN_INTER_USER_DELAY - timeSinceLastReply + Math.floor(Math.random() * 2000);
+            console.log(`[WhatsApp Bot] Global queue: waiting ${extraWait}ms before replying to ${senderPhone}`);
+            await new Promise(r => setTimeout(r, extraWait));
+          }
+
+          // --- TYPING INDICATOR: show "escribiendo..." before sending ---
+          const typingDuration = Math.floor(Math.random() * 3000) + 2000; // 2-5 seconds
+          await sendTypingIndicator(remoteJid, typingDuration);
+          await new Promise(r => setTimeout(r, typingDuration)); // Wait for typing to show
+
           if (geminiResponse.intent === "send_menu") await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
           else await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+
+          // Update global reply timestamp
+          lastGlobalReplyTime = Date.now();
 
           const finalHistory = [...preliminaryHistory, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50);
           await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistory } });

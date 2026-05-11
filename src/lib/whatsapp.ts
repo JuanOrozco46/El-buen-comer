@@ -80,6 +80,44 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
 }
 
 /**
+ * Sends a "composing" (typing) presence indicator to a WhatsApp number.
+ * This makes the bot show "escribiendo..." before sending the actual message.
+ * @param to - Phone number or JID
+ * @param durationMs - How long (ms) to show typing before it auto-clears (default 3000)
+ */
+export async function sendTypingIndicator(to: string, durationMs: number = 3000): Promise<boolean> {
+  if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE_NAME) return false;
+
+  try {
+    const cleanUrl = EVOLUTION_API_URL.endsWith('/') ? EVOLUTION_API_URL.slice(0, -1) : EVOLUTION_API_URL;
+    const response = await fetch(
+      `${cleanUrl}/chat/sendPresence/${EVOLUTION_INSTANCE_NAME}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": EVOLUTION_API_KEY,
+        },
+        body: JSON.stringify({
+          number: to,
+          delay: durationMs,
+          presence: "composing",
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error("[WhatsApp] Presence API error:", response.status);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("[WhatsApp] Presence error:", error);
+    return false;
+  }
+}
+
+/**
  * Formats a standard order confirmation message.
  * @param orderId - The order ID
  * @param items - Array of order items with product names and quantities
