@@ -37,6 +37,7 @@ function POSPageContent() {
   }, [searchParams]);
   const [viewStep, setViewStep] = useState<'TABLE' | 'PRODUCTS'>('TABLE');
   const [isPanicActive, setIsPanicActive] = useState(false);
+  const [activeWaiter, setActiveWaiter] = useState<{ id: number | null; name: string | null }>({ id: null, name: null });
   const [editOrderId, setEditOrderId] = useState<number | null>(null);
 
   // Split payment modal state
@@ -71,8 +72,21 @@ function POSPageContent() {
         setIsPanicActive(json.isPanicModeActive);
       } catch (err) { console.error(err); }
     };
+
+    const checkActiveWaiter = async () => {
+      try {
+        const res = await fetch('/api/admin/waiter/active');
+        const json = await res.json();
+        setActiveWaiter({ id: json.activeWaiterId, name: json.activeWaiterName });
+      } catch (err) { console.error(err); }
+    };
+
     checkPanic();
-    const interval = setInterval(checkPanic, 10000); // Poll every 10s
+    checkActiveWaiter();
+    const interval = setInterval(() => {
+      checkPanic();
+      checkActiveWaiter();
+    }, 10000); // Poll every 10s
     return () => clearInterval(interval);
   }, []);
 
@@ -312,6 +326,22 @@ function POSPageContent() {
     }
   };
 
+  const claimActiveWaiter = async () => {
+    try {
+      const res = await fetch('/api/admin/waiter/active', { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        const res2 = await fetch('/api/admin/waiter/active');
+        const json2 = await res2.json();
+        setActiveWaiter({ id: json2.activeWaiterId, name: json2.activeWaiterName });
+      } else {
+        alert(json.error || "No se pudo reclamar el rol de mesero activo.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const openSplitModal = (orderId: number, total: number) => {
     setSplitCash("");
     setSplitTransfer(total.toString());
@@ -427,11 +457,31 @@ function POSPageContent() {
                     {viewMode === 'NEW' ? (viewStep === 'TABLE' ? 'Seleccionar Mesa' : `Mesa ${selectedTable?.number}`) : 'Cuentas'}
                   </h1>
                 </div>
-                <p className="hidden sm:block text-zinc-400 font-bold mt-1 uppercase tracking-widest text-[8px] lg:text-[10px]">Operador: {role || 'Personal'}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="hidden sm:block text-zinc-400 font-bold uppercase tracking-widest text-[8px] lg:text-[10px]">Operador: {role || 'Personal'}</p>
+                  <span className="hidden sm:block text-zinc-200">•</span>
+                  <p className="text-[8px] lg:text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    WA Bot: <span className={activeWaiter.id ? "text-orange-600" : "text-zinc-400"}>{activeWaiter.name || "Sin asignar"}</span>
+                  </p>
+                </div>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
+              {role === 'WAITER' && (
+                <button
+                  onClick={claimActiveWaiter}
+                  disabled={activeWaiter.id === Number(session?.user?.id)}
+                  className={`px-4 py-2 rounded-xl border-2 transition-all font-black text-[9px] uppercase tracking-widest flex items-center gap-2 ${
+                    activeWaiter.id === Number(session?.user?.id)
+                    ? "bg-orange-50 border-orange-200 text-orange-600 cursor-default"
+                    : "bg-white border-zinc-200 text-zinc-400 hover:border-orange-600 hover:text-orange-600 active:scale-95"
+                  }`}
+                >
+                  <Smartphone size={14} className={activeWaiter.id === Number(session?.user?.id) ? "animate-pulse" : ""} />
+                  {activeWaiter.id === Number(session?.user?.id) ? "Recibiendo WhatsApp" : "Atender WhatsApp"}
+                </button>
+              )}
               {isCashierOrAdmin && (
                 <div className="flex bg-zinc-100 p-1 rounded-2xl gap-1">
                   <button
