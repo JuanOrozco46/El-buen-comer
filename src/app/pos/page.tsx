@@ -468,7 +468,7 @@ function POSPageContent() {
             </div>
 
             <div className="flex items-center gap-3">
-              {role === 'WAITER' && (
+              {(role === 'WAITER' || role === 'CASHIER') && (
                 <button
                   onClick={claimActiveWaiter}
                   disabled={activeWaiter.id === Number(session?.user?.id)}

@@ -27,7 +27,7 @@ export const authOptions: NextAuthOptions = {
           if (!isPasswordValid) return null;
 
           // --- RECORD ACTIVE WAITER IN GLOBAL SETTINGS ---
-          if (user.role === "WAITER") {
+          if (user.role === "WAITER" || user.role === "CASHIER") {
             try {
               await (prisma.globalSettings as any).upsert({
                 where: { id: 1 },

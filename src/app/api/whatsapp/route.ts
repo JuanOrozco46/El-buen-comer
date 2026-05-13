@@ -406,11 +406,11 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             let user: any = null;
             if (settings?.activeWaiterId) {
               user = await prisma.user.findFirst({
-                where: { id: settings.activeWaiterId, role: "WAITER" }
+                where: { id: settings.activeWaiterId, role: { in: ["WAITER", "CASHIER"] } }
               });
             }
-            // Fallback to the first available WAITER in the database
-            if (!user) user = await prisma.user.findFirst({ where: { role: "WAITER" } });
+            // Fallback to the first available WAITER or CASHIER in the database
+            if (!user) user = await prisma.user.findFirst({ where: { role: { in: ["WAITER", "CASHIER"] } } });
             // Absolute fallback to ANY user (safety) if no Waiters are found
             if (!user) user = await prisma.user.findFirst(); 
             

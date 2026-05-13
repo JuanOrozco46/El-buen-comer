@@ -22,7 +22,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'WAITER') {
+    if (!session || (session.user.role !== 'WAITER' && session.user.role !== 'CASHIER')) {
       return NextResponse.json({ error: "Unauthorized. Only waiters can claim this role." }, { status: 401 });
     }
 
