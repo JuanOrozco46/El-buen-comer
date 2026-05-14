@@ -114,6 +114,36 @@ export function DeliveryModal({ onCancel, onConfirm }: Props) {
             </div>
           </div>
 
+          <div className="space-y-3">
+            <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-2">Medio de Pago</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setData({ ...data, method: "EFECTIVO" })}
+                className={`py-3 rounded-2xl flex items-center justify-center gap-2 border-2 transition-all ${
+                  data.method === "EFECTIVO"
+                    ? "bg-emerald-50 border-emerald-500 text-emerald-700"
+                    : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-200"
+                }`}
+              >
+                <DollarSign size={18} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Efectivo</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setData({ ...data, method: "TRANSFERENCIA" })}
+                className={`py-3 rounded-2xl flex items-center justify-center gap-2 border-2 transition-all ${
+                  data.method === "TRANSFERENCIA"
+                    ? "bg-purple-50 border-purple-500 text-purple-700"
+                    : "bg-white border-zinc-100 text-zinc-400 hover:border-zinc-200"
+                }`}
+              >
+                <Smartphone size={18} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Transfe</span>
+              </button>
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={!data.name || !data.address}

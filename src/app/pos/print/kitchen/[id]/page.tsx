@@ -170,7 +170,7 @@ export default function KitchenPrintTicket() {
                     {order.customerName && <p>CLI: {order.customerName}</p>}
                     {order.customerPhone && <p>TEL: {order.customerPhone.startsWith('57') && order.customerPhone.length > 10 ? order.customerPhone.substring(2) : order.customerPhone}</p>}
                     {order.customerAddress && <p>DIR: {order.customerAddress}</p>}
-                    {order.notes && <p className="uppercase">{order.notes}</p>}
+                    {order.notes && <p className="uppercase text-black font-black">{order.notes}</p>}
                     
                     {/* Financial Summary for Kitchen (Showing for all delivery/whatsapp) */}
                     {(order.source === 'DELIVERY' || order.source === 'WHATSAPP') && (

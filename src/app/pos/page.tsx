@@ -212,7 +212,7 @@ function POSPageContent() {
         customerName: takeawayData?.name || deliveryData?.name || null,
         customerPhone: takeawayData?.phone || deliveryData?.phone || null,
         customerAddress: deliveryData?.address || null,
-        notes: null,
+        notes: deliveryData?.method ? `PAGO: ${deliveryData.method}` : null,
         total: total,
         deliveryFee: deliveryFee,
         status: actionMethod === 'PENDING' ? 'PENDING' : 'COMPLETED',
@@ -749,13 +749,15 @@ function POSPageContent() {
                              order.source === 'DELIVERY' ? 'DOMICILIO' : 
                              order.source === 'TAKEAWAY' ? 'PARA LLEVAR' : order.source || 'POS'}
                           </span>
-                          <button
-                            onClick={() => deleteOrder(order.id)}
-                            title="Eliminar Orden"
-                            className="p-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-xl transition-all"
-                          >
-                            <X size={16} />
-                          </button>
+                          {session?.user?.role === 'ADMIN' && (
+                            <button
+                              onClick={() => deleteOrder(order.id)}
+                              title="Eliminar Orden"
+                              className="p-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-xl transition-all"
+                            >
+                              <X size={16} />
+                            </button>
+                          )}
                         </div>
                       </div>
 

@@ -149,13 +149,20 @@ export default function KitchenPage() {
                   </ul>
 
                   {/* Footer Context */}
-                  <div className="px-6 py-4 bg-zinc-950 flex items-center justify-between border-t border-zinc-800">
-                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-1">
-                      <Info size={14} /> {order.source}
-                    </p>
-                    <p className="text-sm font-black text-zinc-400">
-                      {order.customerName ? order.customerName : "Mostrador"}
-                    </p>
+                  <div className="px-6 py-4 bg-zinc-950 flex flex-col gap-2 border-t border-zinc-800">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-1">
+                        <Info size={14} /> {order.source}
+                      </p>
+                      <p className="text-sm font-black text-zinc-400">
+                        {order.customerName ? order.customerName : "Mostrador"}
+                      </p>
+                    </div>
+                    {order.notes && (
+                      <div className="mt-1 p-2 bg-orange-600/20 border border-orange-600/40 rounded-xl">
+                        <p className="text-[10px] font-black text-orange-500 uppercase tracking-[0.2em]">{order.notes}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
