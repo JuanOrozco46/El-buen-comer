@@ -13,7 +13,9 @@ import {
   Banknote,
   CreditCard,
   Smartphone,
-  Hash
+  Hash,
+  Trash2,
+  Edit2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -108,6 +110,27 @@ export default function Dashboard() {
     } finally {
       setLoadingOrders(false);
     }
+  };
+
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!confirm("¿Estás seguro de que deseas ELIMINAR este pedido permanentemente? Esta acción no se puede deshacer y afectará los reportes.")) return;
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
+      if (res.ok) {
+        if (selectedWaiter) fetchWaiterOrders(selectedWaiter.id);
+        fetchDashboard(selectedRange);
+      } else {
+        const err = await res.json();
+        alert(`Error: ${err.error || "No se pudo eliminar el pedido"}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión");
+    }
+  };
+
+  const handleEditOrder = (orderId: number) => {
+    router.push(`/pos?edit=${orderId}`);
   };
 
   const handleWaiterClick = (waiter: { id: number; name: string }) => {
@@ -443,6 +466,7 @@ export default function Dashboard() {
                             <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-400">Cliente</th>
                             <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-400">Platos</th>
                             <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-400 text-right">Monto</th>
+                             <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-400 text-right">Acciones</th>
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-zinc-50">
@@ -468,6 +492,24 @@ export default function Dashboard() {
                               </td>
                               <td className="px-8 py-6 text-right font-black text-zinc-900 text-sm">
                                  ${Number(order.total).toLocaleString()}
+                              </td>
+                              <td className="px-8 py-6 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                   <button 
+                                     onClick={() => handleEditOrder(order.id)}
+                                     className="p-2 bg-zinc-100 text-zinc-500 hover:bg-orange-100 hover:text-orange-600 rounded-xl transition-all"
+                                     title="Editar Pedido"
+                                   >
+                                     <Edit2 size={16} />
+                                   </button>
+                                   <button 
+                                     onClick={() => handleDeleteOrder(order.id)}
+                                     className="p-2 bg-red-100 text-red-600 hover:bg-red-200 rounded-xl transition-all"
+                                     title="Eliminar Pedido"
+                                   >
+                                     <Trash2 size={16} />
+                                   </button>
+                                </div>
                               </td>
                             </tr>
                           ))}

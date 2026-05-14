@@ -112,11 +112,18 @@ function POSPageContent() {
     };
     if (status === "authenticated") {
       fetchInitialData();
+      
+      // Auto-load order if 'edit' param is present
+      const editId = searchParams.get("edit");
+      if (editId) {
+        startEditingOrder(Number(editId));
+      }
+
       // Setup polling for live updates of pending orders from other devices
       const interval = setInterval(refreshOrders, 3000);
       return () => clearInterval(interval);
     }
-  }, [status]);
+  }, [status, searchParams]);
 
   const categories = ["Todos", ...Array.from(new Set(products.map(p => p.category)))];
 
@@ -208,7 +215,7 @@ function POSPageContent() {
 
       const orderData = {
         source: takeawayData ? OrderSource.TAKEAWAY : (deliveryData ? OrderSource.DELIVERY : OrderSource.POS),
-        tableId: selectedTable ? selectedTable.id : null,
+        tableId: selectedTable ? (selectedTable.id === null ? null : selectedTable.id) : null,
         customerName: takeawayData?.name || deliveryData?.name || null,
         customerPhone: takeawayData?.phone || deliveryData?.phone || null,
         customerAddress: deliveryData?.address || null,
@@ -261,7 +268,7 @@ function POSPageContent() {
     }
   };
 
-  const startEditingOrder = async (orderId: number, table: any) => {
+  const startEditingOrder = async (orderId: number, table?: any) => {
     try {
       setLoading(true);
       const res = await fetch(`/api/orders/${orderId}`);
@@ -278,7 +285,21 @@ function POSPageContent() {
       
       setCart(cartItems);
       setEditOrderId(orderId);
-      setSelectedTable(table);
+
+      // Derive table if not provided
+      if (table) {
+        setSelectedTable(table);
+      } else {
+        if (orderData.source === 'POS' && orderData.table) {
+          setSelectedTable(orderData.table);
+        } else {
+          setSelectedTable({
+            id: 0,
+            number: orderData.source === 'DELIVERY' ? 'Domi' : (orderData.source === 'TAKEAWAY' ? 'Llevar' : 'Barra'),
+            status: 'OCCUPIED'
+          });
+        }
+      }
       
       // If it's a delivery/takeaway, set the specific data for the summary
       if (orderData.source === 'DELIVERY') {
