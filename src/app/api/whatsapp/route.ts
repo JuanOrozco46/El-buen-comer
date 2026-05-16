@@ -230,7 +230,7 @@ Estilo con sugerencia de hora:
 
 - IMPORTANTE: Genera una respuesta NUEVA cada vez, variando longitud, tono, uso de emojis y estructura. No repitas patrones.
 - Usa intent "chat" siempre.`;
-        else if (timeValue < 9) timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 9:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
+        else if (timeValue < 10) timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 10:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
         else if (timeValue >= 18.5) timeStatus = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM).";
         else if (timeValue >= 18) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). PAGO TRANSFERENCIA OBLIGATORIO.";
         else if (timeValue >= 16) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 4:00 PM).";
@@ -281,17 +281,18 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
    - Si es Pasar a Recoger: Pide SOLO Nombre, Teléfono y método de pago. NO PIDAS DIRECCIÓN.
 4.1. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
 5. **CIERRE CON EFECTIVO**:
-    - Si es domicilio EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer."
-    - Si es recoger EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Gracias por comprar en el buen comer."
+    - Si es domicilio EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
+    - Si es recoger EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Gracias por comprar en el buen comer. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
 6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, dile EXACTAMENTE: "El total son [TOTAL]. Por favor realizar transferencia al Nequi 3173941189 o a la llave @nequilui57354. Envía el comprobante por este medio para verificar y procesar tu pedido inmediatamente." IMPORTANTE: NO uses el intent "order" aquí, espera hasta que manden el comprobante.
 7. **VALIDACIÓN DE COMPROBANTES (IMÁGENES)**: Cuando el cliente envíe una captura de pantalla de transferencia, verifica: Valor, Destino y Fecha.
-    - Si es válida y el total coincide, usa el intent "order" y responde EXACTAMENTE: "Comprobante recibido correctamente. ✅ Tu pedido está confirmado."
+    - Si es válida y el total coincide, usa el intent "order" y responde EXACTAMENTE: "Comprobante recibido correctamente. ✅ Tu pedido está confirmado. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
 8. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó.
 9. **TIEMPOS DE ENTREGA**:
    - Domicilio: "Su pedido demorara 50-60 minutos aproximadamente."
    - Recoger: "Puedes pasar en unos 20-30 minutos aproximadamente."
 10. **NOTAS POR PLATO**: Pon indicaciones en la propiedad "notes" del item.
 11. **NOTAS DE VOZ**: Si recibes el texto "El usuario mandó un audio.", responde EXACTAMENTE: "Hola, por políticas del restaurante no tomamos pedidos por notas de voz, únicamente por texto."
+12. **CAMBIOS EN EL PEDIDO**: Informa al cliente que solo tiene 5 minutos para realizar cambios después de la confirmación. Si el cliente intenta cambiar algo después de 5 minutos de haber confirmado un pedido previo, dile amablemente que el pedido ya entró a preparación y no se pueden hacer cambios.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
@@ -429,7 +430,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               let pPhone = od.customerPhone || senderPhone;
               if (pPhone.startsWith("57") && pPhone.length > 10) pPhone = pPhone.substring(2);
 
-              const existing = await prisma.order.findFirst({ where: { customerPhone: pPhone, status: { in: ["PENDING", "PREPARING"] }, createdAt: { gte: new Date(Date.now() - 4 * 3600000) } }, include: { items: true } });
+              const existing = await prisma.order.findFirst({ where: { customerPhone: pPhone, status: { in: ["PENDING", "PREPARING"] }, createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } }, include: { items: true } });
 
               const orderSource = od.customerAddress?.toLowerCase().includes("recoger") || !od.customerAddress ? "TAKEAWAY" : "DELIVERY";
 
