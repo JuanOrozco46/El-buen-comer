@@ -265,17 +265,34 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
 2. **BREVEDAD (REGLA CRÍTICA)**: Tus respuestas deben ser EXTREMADAMENTE CORTAS. Máximo 1-2 líneas. NUNCA uses frases de cortesía como "¡Claro!", "¡Con gusto!".
 3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
 3.1. **ARROZ CHINO (OBLIGATORIO)**: Si el cliente pide "Arroz Chino", DEBES preguntar si lo desea con Costilla, Chuleta o Tradicional (Solo).
-3.2. **MAPEO DE PRODUCTOS (IMPORTANTE)**: Para evitar cobros adicionales incorrectos, usa los nombres de producto exactos proporcionados.
-4. **RECOLECCIÓN DE DATOS (OBLIGATORIO)**: NO confirmes el pedido hasta tener: Nombre, Teléfono, Dirección (si es domicilio), Barrio y Método de pago.
-5. **VALIDACIÓN DE COMPROBANTES (REGLA DE ORO - CRÍTICA)**: 
-    - Cuando el cliente envíe una captura de transferencia, verifica: Valor, Destino y Fecha.
-    - Si es válida, DEBES usar el intent "order" (NUNCA "chat") y responder EXACTAMENTE: "Comprobante recibido correctamente. ✅ Tu pedido está confirmado. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
-    - IMPORTANTE: Al usar intent "order" tras recibir un comprobante, DEBES reconstruir los \`items\` y \`orderData\` completos mirando el historial de la conversación. NO los dejes vacíos.
-6. **MÉTODO DE PAGO**: Si pagan por transferencia, pide el comprobante ANTES de confirmar con intent "order". Si pagan en efectivo, puedes confirmar directamente con intent "order".
-7. **MEMORIA**: No repitas preguntas ya respondidas.
-8. **TIEMPOS**: Domicilio: "Su pedido demorara 50-60 minutos aproximadamente." Recoger: "Puedes pasar en unos 20-30 minutos aproximadamente."
-9. **NOTAS**: Pon indicaciones en la propiedad "notes" del item.
-10. **NOTAS DE VOZ**: Responde: "Hola, por políticas del restaurante no tomamos pedidos por notas de voz, únicamente por texto."
+3.2. **MAPEO DE PRODUCTOS (IMPORTANTE)**: Para evitar cobros adicionales incorrectos, usa los siguientes nombres de producto exactos (aplica para TODOS los tamaños):
+   - "Arroz Chino" + "Tradicional" o "Solo" -> Usa productName: "Arroz Chino"
+   - "Arroz Chino" + "Costilla" -> Usa productName: "Arroz con Costilla" (NO agregues "Costilla (Adición)")
+   - "Arroz Chino" + "Chuleta" -> Usa productName: "Arroz con Chuleta" (NO agregues "Chuleta (Adición)")
+   - Solo usa productos de la categoría "Adiciones" si el cliente pide explícitamente una "adición", "extra" o "porción adicional" de algo. Si el cliente pide un ingrediente que ya es parte del plato pero lo pide "aparte" (ej: "chicharrón aparte", "costilla aparte"), NO lo cobres como adición, ponlo como una nota en el producto.
+4. **RECOLECCIÓN DE DATOS (OBLIGATORIO - REGLA DE ORO)**: NO puedes usar el intent "order" NI confirmar el pedido hasta que tengas los datos siguientes:
+   a) Nombre del cliente.
+   b) Teléfono de contacto.
+   c) Dirección Completa y Barrio (IMPORTANTE: Si no identificas el barrio, PREGUNTA por él para calcular el valor del domicilio).
+   d) Método de pago (Efectivo o Transferencia).
+   e) COMPROBANTE: Si el método de pago es TRANSFERENCIA, ES OBLIGATORIO que el cliente envíe la imagen del comprobante ANTES de que uses el intent "order".
+   - Si falta CUALQUIERA, sigue preguntando de forma breve.
+   - Si es para Domicilio: Pide Nombre, Teléfono, Dirección, y método de pago.
+   - Si es Pasar a Recoger: Pide SOLO Nombre, Teléfono y método de pago. NO PIDAS DIRECCIÓN.
+4.1. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
+5. **CIERRE CON EFECTIVO**:
+    - Si es domicilio EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
+    - Si es recoger EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Gracias por comprar en el buen comer. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
+6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, dile EXACTAMENTE: "El total son [TOTAL]. Por favor realizar transferencia al Nequi 3173941189 o a la llave @nequilui57354. Envía el comprobante por este medio para verificar y procesar tu pedido inmediatamente." IMPORTANTE: NO uses el intent "order" aquí, espera hasta que manden el comprobante.
+7. **VALIDACIÓN DE COMPROBANTES (IMÁGENES)**: Cuando el cliente envíe una captura de pantalla de transferencia, verifica: Valor, Destino y Fecha.
+    - Si es válida y el total coincide, DEBES usar el intent "order" (NUNCA uses "chat" para una confirmación) y responde EXACTAMENTE: "Comprobante recibido correctamente. ✅ Tu pedido está confirmado. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
+8. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó.
+9. **TIEMPOS DE ENTREGA**:
+   - Domicilio: "Su pedido demorara 50-60 minutos aproximadamente."
+   - Recoger: "Puedes pasar en unos 20-30 minutos aproximadamente."
+10. **NOTAS POR PLATO**: Pon indicaciones en la propiedad "notes" del item.
+11. **NOTAS DE VOZ**: Si recibes el texto "El usuario mandó un audio.", responde EXACTAMENTE: "Hola, por políticas del restaurante no tomamos pedidos por notas de voz, únicamente por texto."
+12. **CAMBIOS EN EL PEDIDO**: Informa al cliente que solo tiene 5 minutos para realizar cambios después de la confirmación. Si el cliente intenta cambiar algo después de 5 minutos de haber confirmado un pedido previo, dile amablemente que el pedido ya entró a preparación y no se pueden hacer cambios.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
@@ -382,20 +399,17 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           const finalHistory = [...preliminaryHistory, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50);
           await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistory } });
 
-          // --- INTENT SAFEGUARD: Detect if Gemini confirmed but used 'chat' intent ---
+          // --- INTENT SAFEGUARD: If bot confirmed in text but used 'chat' intent ---
           if (geminiResponse.intent === "chat" && geminiResponse.replyText?.includes("Comprobante recibido correctamente")) {
-            console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Text says confirmed but intent is 'chat'.`);
+            console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Correcting to 'order'.`);
             if (geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
-              console.log(`[WhatsApp Bot] Auto-correcting 'chat' -> 'order' because orderData is present.`);
               geminiResponse.intent = "order";
             } else {
-              console.error(`[WhatsApp Bot] CRITICAL: Confirmation sent but orderData is missing for ${senderPhone}. Notification to admin might be needed.`);
-              // Attempt to alert admin
-              try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR CRÍTICO]\nSe confirmó recibo al cliente ${senderPhone} pero NO se generó orden en el sistema por error de IA.\nFavor revisar manualmente.`); } catch(e) {}
+              console.error(`[WhatsApp Bot] CRITICAL: Confirmation sent but orderData is missing for ${senderPhone}.`);
+              try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR BOT]\nSe confirmó recibo al cliente ${senderPhone} pero NO se generó orden en sistema.\nRevisar manual.`); } catch(e) {}
             }
           }
 
-          // Order Logic
           if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
             const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
