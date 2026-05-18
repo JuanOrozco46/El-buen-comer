@@ -237,6 +237,8 @@ Estilo con sugerencia de hora:
 
         const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Calle 6 #39A-06 Entrada del barrio Rockefeller, Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.${timeStatus}
 
+DATO ADICIONAL (PRIVADO): El titular de la cuenta Nequi es Luis Pretelt. SóLO proporciona este nombre si el cliente lo pregunta explícitamente.
+
 INVENTARIO ACTUAL Y PRECIOS:
 ${menuText}
 
