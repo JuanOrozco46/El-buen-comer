@@ -22,6 +22,7 @@ model User {
 model GlobalSettings {
   id                 Int      @id @default(1)
   isPanicModeActive  Boolean  @default(false)
+  isPickupOnlyActive Boolean  @default(false)
   restaurantName     String   @default("El Horno | Maxi Wok")
   activeWaiterId     Int?     // ID of the currently logged-in waiter
   activeWaiter       User?    @relation(fields: [activeWaiterId], references: [id])

@@ -11,21 +11,31 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { active } = body;
+    const { active, pickupOnly } = body;
+
+    const data: any = {};
+    if (active !== undefined) data.isPanicModeActive = active;
+    if (pickupOnly !== undefined) data.isPickupOnlyActive = pickupOnly;
 
     const updated = await prisma.globalSettings.upsert({
       where: { id: 1 },
-      update: { isPanicModeActive: active },
-      create: { id: 1, isPanicModeActive: active }
-    });
+      update: data,
+      create: { id: 1, ...data }
+    }) as any;
 
-    return NextResponse.json({ isPanicModeActive: updated.isPanicModeActive });
+    return NextResponse.json({ 
+      isPanicModeActive: updated.isPanicModeActive,
+      isPickupOnlyActive: updated.isPickupOnlyActive
+    });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to toggle panic mode" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
   }
 }
 
 export async function GET() {
-  const settings = await prisma.globalSettings.findUnique({ where: { id: 1 } });
-  return NextResponse.json({ isPanicModeActive: settings?.isPanicModeActive || false });
+  const settings = await prisma.globalSettings.findUnique({ where: { id: 1 } }) as any;
+  return NextResponse.json({ 
+    isPanicModeActive: settings?.isPanicModeActive || false,
+    isPickupOnlyActive: settings?.isPickupOnlyActive || false
+  });
 }

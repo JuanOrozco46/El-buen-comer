@@ -235,6 +235,10 @@ Estilo con sugerencia de hora:
         else if (timeValue >= 18) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). PAGO TRANSFERENCIA OBLIGATORIO.";
         else if (timeValue >= 16) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 4:00 PM).";
 
+        if (globalSettings?.isPickupOnlyActive) {
+          timeStatus += "\n⚠️ AVISO IMPORTANTE: Actualmente SOLO estamos aceptando pedidos para RECOGER en el local. NO HAY DOMICILIOS. Asegúrate de que el cliente lo sepa.";
+        }
+
         const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Calle 6 #39A-06 Entrada del barrio Rockefeller, Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.${timeStatus}
 
 DATO ADICIONAL (PRIVADO): El titular de la cuenta Nequi es Luis Pretelt. SóLO proporciona este nombre si el cliente lo pregunta explícitamente.
@@ -392,7 +396,25 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           await sendTypingIndicator(remoteJid, typingDuration);
           await new Promise(r => setTimeout(r, typingDuration)); // Wait for typing to show
 
-          if (geminiResponse.intent === "send_menu") await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
+          if (geminiResponse.intent === "send_menu") {
+            await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
+            
+            // Extra message if Pickup Only is active
+            if (globalSettings?.isPickupOnlyActive) {
+              const pickupMessages = [
+                "⚠️ *AVISO:* Por ahora solo estamos recibiendo pedidos para *RECOGER* en el local. ¡Te esperamos!",
+                "🛵 *Nota:* En este momento no contamos con domiciliarios, solo estamos entregando pedidos para *recoger*.",
+                "📍 *Atención:* Solo tenemos disponible la opción de *recoger* en el restaurante por ahora. No hay domicilios activos.",
+                "🥘 Por el momento solo estamos manejando pedidos para *RECOGER*. Si deseas, puedes pasar por el tuyo al local en un momento.",
+                "🚫 Estamos sin domicilios ahora mismo. Únicamente pedidos para *recoger* en el punto físico disponibles."
+              ];
+              const randomMessage = pickupMessages[Math.floor(Math.random() * pickupMessages.length)];
+              
+              // Brief delay before the extra message
+              await new Promise(r => setTimeout(r, 2000));
+              await sendWhatsAppMessage(remoteJid, randomMessage);
+            }
+          }
           else await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
 
           // Update global reply timestamp
@@ -444,7 +466,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
               const existing = await prisma.order.findFirst({ where: { customerPhone: pPhone, status: { in: ["PENDING", "PREPARING"] }, createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } }, include: { items: true } });
 
-              const orderSource = od.customerAddress?.toLowerCase().includes("recoger") || !od.customerAddress ? "TAKEAWAY" : "DELIVERY";
+              const orderSource = (globalSettings?.isPickupOnlyActive || od.customerAddress?.toLowerCase().includes("recoger") || !od.customerAddress) ? "TAKEAWAY" : "DELIVERY";
 
               await prisma.$transaction(async (tx) => {
                 let name = od.customerName || pushName || `WA: ${senderPhone}`;

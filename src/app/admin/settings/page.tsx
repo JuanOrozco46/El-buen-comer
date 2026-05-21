@@ -34,6 +34,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("users");
   const [loading, setLoading] = useState(true);
   const [isPanicActive, setIsPanicActive] = useState(false);
+  const [isPickupOnlyActive, setIsPickupOnlyActive] = useState(false);
 
   // New User Form State
   const [newUser, setNewUser] = useState({ userName: "", name: "", role: "WAITER", password: "" });
@@ -63,6 +64,7 @@ export default function SettingsPage() {
         const res = await fetch("/api/admin/panic");
         const json = await res.json();
         setIsPanicActive(json.isPanicModeActive);
+        setIsPickupOnlyActive(json.isPickupOnlyActive);
       } catch (err) {
         console.error(err);
       } finally {
@@ -160,6 +162,20 @@ export default function SettingsPage() {
       });
       const json = await res.json();
       setIsPanicActive(json.isPanicModeActive);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const togglePickupOnly = async () => {
+    try {
+      const res = await fetch("/api/admin/panic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pickupOnly: !isPickupOnlyActive })
+      });
+      const json = await res.json();
+      setIsPickupOnlyActive(json.isPickupOnlyActive);
     } catch (err) {
       console.error(err);
     }
@@ -518,6 +534,31 @@ export default function SettingsPage() {
                     <div>
                       <p className="text-sm font-black text-red-600 uppercase tracking-widest leading-none">Alerta Activa</p>
                       <p className="text-[10px] text-red-500 font-bold mt-1 uppercase">Todos los meseros están viendo la señal de bloqueo.</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center mt-8 pt-8 border-t border-zinc-200">
+                   <div>
+                      <p className="font-black text-zinc-900 uppercase tracking-widest text-sm">Modo Solo Recoger</p>
+                      <p className="text-xs text-zinc-500 font-medium max-w-sm mt-1">Al activarse, el bot informará que solo hay pedidos para recoger (no domicilios).</p>
+                   </div>
+                   <div 
+                    onClick={togglePickupOnly}
+                    className={`w-20 h-10 rounded-full cursor-pointer transition-all relative ${isPickupOnlyActive ? "bg-orange-600 shadow-lg shadow-orange-600/30" : "bg-zinc-300"}`}
+                   >
+                     <div className={`absolute top-1 w-8 h-8 bg-white rounded-full transition-all ${isPickupOnlyActive ? "left-11 shadow-md" : "left-1"}`} />
+                   </div>
+                </div>
+
+                {isPickupOnlyActive && (
+                  <div className="bg-orange-50 border border-orange-100 p-6 rounded-2xl flex gap-4 items-center">
+                    <div className="w-10 h-10 bg-orange-600 text-white rounded-xl flex items-center justify-center animate-pulse">
+                      <AlertTriangle size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-orange-600 uppercase tracking-widest leading-none">Solo Recoger Activo</p>
+                      <p className="text-[10px] text-orange-500 font-bold mt-1 uppercase">El bot advierte a los clientes sobre la disponibilidad limitada.</p>
                     </div>
                   </div>
                 )}
