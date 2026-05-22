@@ -202,6 +202,23 @@ export async function POST(req: Request) {
           history = [];
         }
 
+        // --- NEW: Handle Receipt Only without history ---
+        const isOnlyReceipt = aggregatedMedia.length > 0 && aggregatedMedia.every(m => m.type === 'image') && !aggregatedText;
+        if (isOnlyReceipt && history.length === 0) {
+          console.log(`[WhatsApp Bot] Detected receipt only with empty history for ${senderPhone}. Sending short confirmation.`);
+          await sendTypingIndicator(remoteJid, 2000);
+          await new Promise(r => setTimeout(r, 2000));
+          await sendWhatsAppMessage(remoteJid, "Transferencia comprobada. ✅");
+          
+          const shortHistory = [
+            { role: "user", text: "[Imagen de transferencia]" },
+            { role: "model", text: JSON.stringify({ intent: "chat", replyText: "Transferencia comprobada. ✅" }) }
+          ];
+          await prisma.whatsAppChat.update({ where: { phone: senderPhone }, data: { history: shortHistory, updatedAt: new Date(), isProcessing: false } });
+          await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
+          break; // Exit the loop
+        }
+
 
         // Timings
         const nowBogota = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
