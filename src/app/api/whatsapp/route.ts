@@ -6,6 +6,17 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); 
 
+/**
+ * Normalizes a string by removing accents and converting to lowercase.
+ */
+function normalizeString(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
 // Throttling for admin alerts to avoid spam
 let lastAlertTimestamp = 0;
 const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
@@ -451,12 +462,23 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             
             const validItems: any[] = [];
             let total = 0;
+            const normalizedProducts = products.map(p => ({ ...p, normalizedName: normalizeString(p.name) }));
+
             for (const i of od.items) {
-              const p = products.find(x => x.name.toLowerCase() === i.productName.toLowerCase() || x.name.toLowerCase().includes(i.productName.toLowerCase()));
+              const inputProductName = normalizeString(i.productName);
+              const p = normalizedProducts.find(x => 
+                x.normalizedName === inputProductName || 
+                x.normalizedName.includes(inputProductName) || 
+                inputProductName.includes(x.normalizedName)
+              );
+
               if (p) {
-                const s = p.sizes.find(z => z.name.toLowerCase() === i.sizeName.toLowerCase()) || p.sizes[0];
+                const inputSizeName = normalizeString(i.sizeName);
+                const s = p.sizes.find(z => normalizeString(z.name) === inputSizeName) || p.sizes[0];
                 validItems.push({ productId: p.id, sizeName: s.name, quantity: Number(i.quantity) || 1, price: Number(s.price), notes: i.notes || null });
                 total += Number(s.price) * (Number(i.quantity) || 1);
+              } else {
+                console.warn(`[WhatsApp Bot] Product not matched: "${i.productName}" for ${senderPhone}`);
               }
             }
 
@@ -490,7 +512,11 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               });
               console.log(`[WhatsApp Bot] Order generated/updated successfully for ${senderPhone}`);
             } else {
-              console.log(`[WhatsApp Bot] Order generation failed for ${senderPhone} - validItems: ${validItems.length}, user: ${!!user}`);
+              console.error(`[WhatsApp Bot] Order generation failed for ${senderPhone} - items Matched: ${validItems.length}/${od.items?.length}, user: ${!!user}`);
+              // Notify admin of failure
+              try { 
+                await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR CRÍTICO]\nSe confirmó pedido a ${senderPhone} pero falló la creación en DB.\nProductos detectados: ${validItems.length} de ${od.items?.length}\nRevisar consola y manual.`); 
+              } catch(e) {}
             }
           }
         }
