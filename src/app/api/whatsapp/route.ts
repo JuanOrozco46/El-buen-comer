@@ -4,7 +4,7 @@ import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia, sendTypingInd
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); 
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 /**
  * Normalizes a string by removing accents and converting to lowercase.
@@ -86,8 +86,8 @@ export async function POST(req: Request) {
     } else if (messageObj.audioMessage) {
       mediaItem = { type: 'audio', mime: messageObj.audioMessage.mimetype, base64: null };
     } else if (messageObj.documentMessage) {
-       messageText = messageObj.documentMessage.caption || "";
-       if (messageObj.documentMessage.mimetype?.startsWith('image')) mediaItem = { type: 'image', mime: messageObj.documentMessage.mimetype, base64: null };
+      messageText = messageObj.documentMessage.caption || "";
+      if (messageObj.documentMessage.mimetype?.startsWith('image')) mediaItem = { type: 'image', mime: messageObj.documentMessage.mimetype, base64: null };
     }
 
     // --- FETCH BASE64 FOR MEDIA IF PRESENT ---
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       const apiUrl = process.env.EVOLUTION_API_URL;
       const apiKey = process.env.EVOLUTION_API_KEY;
       const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "Elbuencomer";
-      
+
       let rawBase64 = body.base64 || data.base64 || data.message?.base64; // Check if already present
 
       if (!rawBase64 && apiUrl && apiKey && instanceName && data.key?.id) {
@@ -121,14 +121,14 @@ export async function POST(req: Request) {
     if (isFromMe) {
       if (!messageText) return NextResponse.json({ received: true });
       console.log(`[WhatsApp Bot] Detected outgoing from current user to ${senderPhone}: "${messageText}"`);
-      
+
       const chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
       if (chat) {
         let history = (chat.history as any[]) || [];
         // Prevent doubling if the bot just sent this in the same cycle
-        const isDuplicate = history.length > 0 && 
-            (history[history.length - 1].text === messageText || 
-             history[history.length - 1].text?.includes(messageText.substring(0, 50)));
+        const isDuplicate = history.length > 0 &&
+          (history[history.length - 1].text === messageText ||
+            history[history.length - 1].text?.includes(messageText.substring(0, 50)));
 
         if (!isDuplicate) {
           const updatedHistory = [...history, { role: "model", text: messageText }].slice(-50);
@@ -190,10 +190,10 @@ export async function POST(req: Request) {
         const products = await prisma.product.findMany({ where: { isActive: true, isSoldOut: false }, include: { sizes: true } });
         const globalSettings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
         const menuText = products.map((p) => `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')).join('\n\n');
-        
+
         const currentChat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
         let history: any[] = (currentChat?.history as any[]) || [];
-        
+
         // --- HISTORY EXPIRATION (2 HOURS) ---
         const lastUpdate = new Date(currentChat!.updatedAt).getTime();
         const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
@@ -209,7 +209,7 @@ export async function POST(req: Request) {
           await sendTypingIndicator(remoteJid, 2000);
           await new Promise(r => setTimeout(r, 2000));
           await sendWhatsAppMessage(remoteJid, "Transferencia comprobada. ✅");
-          
+
           const shortHistory = [
             { role: "user", text: "[Imagen de transferencia]" },
             { role: "model", text: JSON.stringify({ intent: "chat", replyText: "Transferencia comprobada. ✅" }) }
@@ -224,7 +224,7 @@ export async function POST(req: Request) {
         const nowBogota = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
         const timeValue = nowBogota.getHours() + nowBogota.getMinutes() / 60;
         const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
-        
+
         let timeStatus = "";
         if (globalSettings?.isPanicModeActive) timeStatus = `\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. NO USES EL INTENT ORDER.
 INSTRUCCIONES PARA VARIAR LA RESPUESTA:
@@ -296,6 +296,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
 
 REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
 1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez (historial completamente vacío), DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si ya hay historial, no saludes de nuevo. Si el usuario pide la "Tabla", se refiere al "Menú", en cuyo caso también debes usar el intent "send_menu".
+1.1. El día de hoy es 23 de Mayo del 2026 y no tenemos ni arroz con chuleta, ni arroz con costilla.
 2. **BREVEDAD (REGLA CRÍTICA)**: Tus respuestas deben ser EXTREMADAMENTE CORTAS. Máximo 1-2 líneas. NUNCA uses frases de cortesía como "¡Claro!", "¡Con gusto!".
 3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
 3.1. **ARROZ CHINO (OBLIGATORIO)**: Si el cliente pide "Arroz Chino", DEBES preguntar si lo desea con Costilla, Chuleta o Tradicional (Solo).
@@ -367,16 +368,16 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
         for (const modelName of fallbackModels) {
           if (geminiResponse) break;
-          
+
           let tries = (modelName === fallbackModels[0]) ? 3 : 2; // More retries for primary
           let waitTime = 2000;
           const currentModel = genAI.getGenerativeModel({ model: modelName });
-          
+
           console.log(`[WhatsApp Bot] Querying model ${modelName} for ${senderPhone}`);
-          
+
           while (tries > 0) {
             try {
-              const session = currentModel.startChat({ 
+              const session = currentModel.startChat({
                 systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
                 generationConfig: { responseMimeType: "application/json" },
                 history: safeHistory
@@ -386,11 +387,11 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               console.log(`[WhatsApp Bot] ${modelName} responded: ${textResponse}`);
               geminiResponse = JSON.parse(textResponse);
               break;
-            } catch(e: any) { 
-              tries--; 
+            } catch (e: any) {
+              tries--;
               console.error(`[WhatsApp Bot] ${modelName} error (${senderPhone}), retries left: ${tries}. Error: ${e.message}`);
               if (tries > 0) {
-                await new Promise(r => setTimeout(r, waitTime)); 
+                await new Promise(r => setTimeout(r, waitTime));
                 waitTime += 2000;
               }
             }
@@ -426,7 +427,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
           if (geminiResponse.intent === "send_menu") {
             await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
-            
+
             // Extra message if Pickup Only is active
             if (globalSettings?.isPickupOnlyActive) {
               const pickupMessages = [
@@ -437,7 +438,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                 "🚫 Estamos sin domicilios ahora mismo. Únicamente pedidos para *recoger* en el punto físico disponibles."
               ];
               const randomMessage = pickupMessages[Math.floor(Math.random() * pickupMessages.length)];
-              
+
               // Brief delay before the extra message
               await new Promise(r => setTimeout(r, 2000));
               await sendWhatsAppMessage(remoteJid, randomMessage);
@@ -458,7 +459,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               geminiResponse.intent = "order";
             } else {
               console.error(`[WhatsApp Bot] CRITICAL: Confirmation sent but orderData is missing for ${senderPhone}.`);
-              try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR BOT]\nSe confirmó recibo al cliente ${senderPhone} pero NO se generó orden en sistema.\nRevisar manual.`); } catch(e) {}
+              try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR BOT]\nSe confirmó recibo al cliente ${senderPhone} pero NO se generó orden en sistema.\nRevisar manual.`); } catch (e) { }
             }
           }
 
@@ -475,17 +476,17 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             // Fallback to the first available WAITER or CASHIER in the database
             if (!user) user = await prisma.user.findFirst({ where: { role: { in: ["WAITER", "CASHIER"] } } });
             // Absolute fallback to ANY user (safety) if no Waiters are found
-            if (!user) user = await prisma.user.findFirst(); 
-            
+            if (!user) user = await prisma.user.findFirst();
+
             const validItems: any[] = [];
             let total = 0;
             const normalizedProducts = products.map(p => ({ ...p, normalizedName: normalizeString(p.name) }));
 
             for (const i of od.items) {
               const inputProductName = normalizeString(i.productName);
-              const p = normalizedProducts.find(x => 
-                x.normalizedName === inputProductName || 
-                x.normalizedName.includes(inputProductName) || 
+              const p = normalizedProducts.find(x =>
+                x.normalizedName === inputProductName ||
+                x.normalizedName.includes(inputProductName) ||
                 inputProductName.includes(x.normalizedName)
               );
 
@@ -531,9 +532,9 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             } else {
               console.error(`[WhatsApp Bot] Order generation failed for ${senderPhone} - items Matched: ${validItems.length}/${od.items?.length}, user: ${!!user}`);
               // Notify admin of failure
-              try { 
-                await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR CRÍTICO]\nSe confirmó pedido a ${senderPhone} pero falló la creación en DB.\nProductos detectados: ${validItems.length} de ${od.items?.length}\nRevisar consola y manual.`); 
-              } catch(e) {}
+              try {
+                await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR CRÍTICO]\nSe confirmó pedido a ${senderPhone} pero falló la creación en DB.\nProductos detectados: ${validItems.length} de ${od.items?.length}\nRevisar consola y manual.`);
+              } catch (e) { }
             }
           }
         }
@@ -550,7 +551,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
     const isT = error.message?.includes("503") || error.message?.includes("Service Unavailable") || error.message?.includes("high demand") || error.message?.includes("fetch failed");
     if (!isT && Date.now() - lastAlertTimestamp > ALERT_COOLDOWN) {
       lastAlertTimestamp = Date.now();
-      try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[⚠️ ALERT BOT]\nError: ${error.message}\nCliente: ${senderPhone}`); } catch(e) {}
+      try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[⚠️ ALERT BOT]\nError: ${error.message}\nCliente: ${senderPhone}`); } catch (e) { }
     }
   }
   return NextResponse.json({ received: true });
