@@ -215,7 +215,7 @@ function POSPageContent() {
 
       const orderData = {
         source: takeawayData ? OrderSource.TAKEAWAY : (deliveryData ? OrderSource.DELIVERY : OrderSource.POS),
-        tableId: selectedTable ? (selectedTable.id === null ? null : selectedTable.id) : null,
+        tableId: selectedTable ? (selectedTable.id === 0 ? null : selectedTable.id) : null,
         customerName: takeawayData?.name || deliveryData?.name || null,
         customerPhone: takeawayData?.phone || deliveryData?.phone || null,
         customerAddress: deliveryData?.address || null,

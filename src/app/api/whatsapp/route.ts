@@ -187,7 +187,15 @@ export async function POST(req: Request) {
         if (!aggregatedText && aggregatedMedia.length === 0) break;
 
         // Fetch Fresh Data
-        const products = await prisma.product.findMany({ where: { isActive: true, isSoldOut: false }, include: { sizes: true } });
+        let products = await prisma.product.findMany({ where: { isActive: true, isSoldOut: false }, include: { sizes: true } });
+
+        // Filtrar productos según la regla 1.1 (Solo Arroz Campesino, Chino, 6 Carnes, Ranchero y Thai disponibles hoy)
+        const allowedToday = ["arroz campesino", "arroz chino", "arroz 6 carnes", "arroz ranchero", "arroz thai", "arroz con chuleta", "arroz con costilla"];
+        products = products.filter(p => {
+          const name = p.name.toLowerCase();
+          return allowedToday.some(allowed => name.includes(allowed) || allowed.includes(name));
+        });
+
         const globalSettings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
         const menuText = products.map((p) => `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')).join('\n\n');
 
