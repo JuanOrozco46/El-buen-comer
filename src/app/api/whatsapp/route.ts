@@ -189,12 +189,7 @@ export async function POST(req: Request) {
         // Fetch Fresh Data
         let products = await prisma.product.findMany({ where: { isActive: true, isSoldOut: false }, include: { sizes: true } });
 
-        // Filtrar productos según la regla 1.1 (Solo Arroz Campesino, Chino, 6 Carnes, Ranchero y Thai disponibles hoy)
-        const allowedToday = ["arroz campesino", "arroz chino", "arroz 6 carnes", "arroz ranchero", "arroz thai", "arroz con chuleta", "arroz con costilla"];
-        products = products.filter(p => {
-          const name = p.name.toLowerCase();
-          return allowedToday.some(allowed => name.includes(allowed) || allowed.includes(name));
-        });
+        // Fresh Data fetched above already filters for isActive and isSoldOut
 
         const globalSettings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
         const menuText = products.map((p) => `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')).join('\n\n');
@@ -272,10 +267,14 @@ Estilo con sugerencia de hora:
         else if (timeValue >= 16) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 4:00 PM).";
 
         if (globalSettings?.isPickupOnlyActive) {
-          timeStatus += "\n⚠️ AVISO IMPORTANTE: Actualmente SOLO estamos aceptando pedidos para RECOGER en el local. NO HAY DOMICILIOS. Asegúrate de que el cliente lo sepa.";
+          timeStatus += "\n⚠️ AVISO IMPORTANTE: Actualmente SOLO estamos aceptando pedidos para RECOGER en el local. NO HAY DOMICILIOS. Asegúrate de que el cliente lo sepa. VARÍA la forma de decirlo cada vez.";
         }
 
         const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Calle 6 #39A-06 Entrada del barrio Rockefeller, Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.${timeStatus}
+
+REGLA DE ORO ANTI-SPAM: PARA EVITAR RESTRICCIONES DE WHATSAPP, NUNCA RESPONDAS EXACTAMENTE IGUAL A DOS CLIENTES. VARÍA SIEMPRE LA ESTRUCTURA, EL TONO, LAS PALABRAS Y EL USO DE EMOJIS. USA LOS GUIONES SIGUIENTES SÓLO COMO BASE DE INFORMACIÓN, NO COMO TEXTO LITERAL OBLIGATORIO (A MENOS QUE SE INDIQUE LO CONTRARIO).
+
+SIMULACIÓN HUMANA: Si tienes varias cosas que decir (ej: saludar y luego preguntar algo), separa los párrafos con DOBLE SALTO DE LÍNEA (\n\n). El sistema se encargará de enviarlos como mensajes independientes para que parezca una conversación real.
 
 DATO ADICIONAL (PRIVADO): El titular de la cuenta Nequi es Luis Pretelt. SóLO proporciona este nombre si el cliente lo pregunta explícitamente.
 
@@ -302,19 +301,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
  - El TOTAL final que menciones debe ser la suma EXACTA de (Productos + Domicilio). Si es recoger, el total es solo el de los productos ($0 domicilio).
  - NO inventes precios. Si un producto no está en la lista, díselo al cliente.
 
-REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
-1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez (historial completamente vacío), DEBES usar el intent "send_menu" y responder EXACTAMENTE con: "Hola, soy el asistente del buen comer ¿qué deseas ordenar hoy?". Si ya hay historial, no saludes de nuevo. Si el usuario pide la "Tabla", se refiere al "Menú", en cuyo caso también debes usar el intent "send_menu".
-1.1. **INVENTARIO RESTRINGIDO (24 DE MAYO)**: Solo nos queda arroz campesino, arroz chino, arroz 6 carnes, arroz ranchero, y Arroz Thai.
-    - Debes informarle a los clientes que solo tenemos estos productos disponibles.
-    - **VARIACIÓN ANTI-SPAM (CRÍTICO)**: Cada vez que des esta información, varía la estructura, el tono y las palabras. No repitas la misma frase a diferentes clientes.
-    - Ejemplos de estilos para el mensaje de disponibilidad (INSPÍRATE EN ESTOS, NO LOS COPIES IDÉNTICOS):
-      * *Estilo Directo*: "Hoy solo tenemos arroz campesino, chino, 6 carnes, ranchero y thai."
-      * *Estilo Amable*: "¡Hola! Te cuento que por hoy solo tenemos disponibles: campesino, chino, 6 carnes, ranchero y thai. ¿Cuál te gustaría?"
-      * *Estilo Informativo*: "Qué tal. Debido al cierre de vías, hoy solo preparamos: campesino, chino, 6 carnes, ranchero y thai. Los demás platos están agotados."
-      * *Estilo Breve*: "Solo nos quedan: campesino, chino, 6 carnes, ranchero y thai."
-      * *Estilo Conversacional*: "Uy, hoy los insumos están limitados. Solo nos quedan estos 5: campesino, chino, 6 carnes, ranchero y thai."
-      * *Estilo Preventivo*: "Te confirmo los arroces de hoy: Campesino, Chino, 6 Carnes, Ranchero y Thai. Otros platos no disponibles por ahora."
-    - Si el cliente pide otro producto, dile que los demás se agotaron por las vías cerradas. Si el pedido es de los permitidos, procésalo normalmente.
+1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez (historial completamente vacío), DEBES usar el intent "send_menu" y responder saludando de forma natural (ej: "¡Hola! Bienvenido al Buen Comer, ¿qué te gustaría pedir?") y ofreciendo el menú. VARÍA EL SALUDO SIEMPRE. Si ya hay historial, no saludes de nuevo. Si el usuario pide la "Tabla", se refiere al "Menú", en cuyo caso también debes usar el intent "send_menu".
 2. **BREVEDAD (REGLA CRÍTICA)**: Tus respuestas deben ser EXTREMADAMENTE CORTAS. Máximo 1-2 líneas. NUNCA uses frases de cortesía como "¡Claro!", "¡Con gusto!".
 3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
 3.1. **ARROZ CHINO (OBLIGATORIO)**: Si el cliente pide "Arroz Chino", DEBES preguntar si lo desea con Costilla, Chuleta o Tradicional (Solo).
@@ -334,23 +321,23 @@ REGLAS Y GUIONES DE OPERACIÓN (SÍGUELOS ESTRICTAMENTE):
    - Si es Pasar a Recoger: Pide SOLO Nombre, Teléfono y método de pago. NO PIDAS DIRECCIÓN.
 4.1. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
 5. **CIERRE CON EFECTIVO**:
-    - Si es domicilio EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Con el domicilio gracias por comprar en el buen comer. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
-    - Si es recoger EXACTAMENTE con: "Con mucho gusto serian [TOTAL]. Gracias por comprar en el buen comer. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
-6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, dile EXACTAMENTE: "El total son [TOTAL]. Por favor realizar transferencia al Nequi 3173941189 o a la llave @nequilui57354. Envía el comprobante por este medio para verificar y procesar tu pedido inmediatamente." IMPORTANTE: NO uses el intent "order" aquí, espera hasta que manden el comprobante.
+    - Si es domicilio: Informa el [TOTAL] y el costo de domicilio. Agradece la compra y menciona que tienen 5 minutos para cambios antes de que pase a preparación. Varía la frase para que no parezca un mensaje automático.
+    - Si es recoger: Informa el [TOTAL]. Agradece la compra y menciona la regla de los 5 minutos para cambios. Varía la redacción.
+6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, informa el [TOTAL] y proporciona los datos de Nequi: 3173941189 o la llave @nequilui57354. Pide el comprobante para procesar el pedido. VARÍA las palabras.
 7. **VALIDACIÓN DE COMPROBANTES (IMÁGENES)**: Cuando el cliente envíe una captura de pantalla de transferencia, verifica: Valor, Destino y Fecha.
-    - Si es válida y el total coincide, DEBES usar el intent "order" (NUNCA uses "chat" para una confirmación) y responde EXACTAMENTE: "Comprobante recibido correctamente. ✅ Tu pedido está confirmado. Recuerda que tienes 5 minutos para realizar cualquier cambio; después de ese tiempo el pedido pasará a preparación y no se podrán hacer modificaciones."
+    - Si es válida y el total coincide, DEBES usar el intent "order" (NUNCA uses "chat" para una confirmación) y confirma que recibiste el comprobante correctamente. Menciona que el pedido ha sido confirmado y la regla de los 5 minutos para cambios. VARÍA LA RESPUESTA de un cliente a otro.
 8. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó.
 9. **TIEMPOS DE ENTREGA**:
    - Domicilio: "Su pedido demorara 50-60 minutos aproximadamente."
    - Recoger: "Puedes pasar en unos 20-30 minutos aproximadamente."
 10. **NOTAS POR PLATO**: Pon indicaciones en la propiedad "notes" del item.
-11. **NOTAS DE VOZ**: Si recibes el texto "El usuario mandó un audio.", responde EXACTAMENTE: "Hola, por políticas del restaurante no tomamos pedidos por notas de voz, únicamente por texto."
-12. **CAMBIOS EN EL PEDIDO**: Informa al cliente que solo tiene 5 minutos para realizar cambios después de la confirmación. Si el cliente intenta cambiar algo después de 5 minutos de haber confirmado un pedido previo, dile amablemente que el pedido ya entró a preparación y no se pueden hacer cambios.
+11. **NOTAS DE VOZ**: Si recibes el texto "El usuario mandó un audio.", informa amablemente que por políticas no se toman pedidos por notas de voz, solo por texto. VARÍA la respuesta.
+12. **CAMBIOS EN EL PEDIDO**: Informa al cliente que solo tiene 5 minutos para realizar cambios después de la confirmación. Si el cliente intenta cambiar algo después de 5 minutos, dile de forma variada y amable que el pedido ya entró a preparación.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
   "intent": "chat" | "order" | "send_menu",
-  "replyText": "Respuesta usando LOS GUIONES EXACTOS",
+  "replyText": "Respuesta variada. Usa \n\n para separar mensajes si quieres enviar más de uno.",
   "orderData": {    // SÓLO si intent es "order"
     "customerName": "...",
     "customerAddress": "...",
@@ -439,7 +426,8 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           }
 
           // --- TYPING INDICATOR: show "escribiendo..." before sending ---
-          const typingDuration = Math.floor(Math.random() * 3000) + 2000; // 2-5 seconds
+          const textLength = geminiResponse.replyText?.length || 20;
+          const typingDuration = Math.min(7000, Math.floor(Math.random() * 2000) + 1500 + (textLength * 25)); // Dynamic duration
           await sendTypingIndicator(remoteJid, typingDuration);
           await new Promise(r => setTimeout(r, typingDuration)); // Wait for typing to show
 
@@ -462,7 +450,23 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               await sendWhatsAppMessage(remoteJid, randomMessage);
             }
           }
-          else await sendWhatsAppMessage(remoteJid, geminiResponse.replyText);
+          else {
+            // Fragmenatación de mensajes: dividir por doble salto de línea
+            const textToSplit = geminiResponse.replyText || "";
+            const messageChunks = textToSplit.split("\n\n").map((c: string) => c.trim()).filter((c: string) => c.length > 0);
+
+            for (let i = 0; i < messageChunks.length; i++) {
+              await sendWhatsAppMessage(remoteJid, messageChunks[i]);
+              
+              // Small delay between chunks to appear more human, except for the last one
+              if (i < messageChunks.length - 1) {
+                const chunkDelay = Math.floor(Math.random() * 1500) + 1000; // 1-2.5s
+                console.log(`[WhatsApp Bot] Fragmentation delay: waiting ${chunkDelay}ms before next chunk for ${senderPhone}`);
+                await new Promise(r => setTimeout(r, chunkDelay));
+                await sendTypingIndicator(remoteJid, chunkDelay + 500); // Keep typing indicator alive
+              }
+            }
+          }
 
           // Update global reply timestamp
           lastGlobalReplyTime = Date.now();
