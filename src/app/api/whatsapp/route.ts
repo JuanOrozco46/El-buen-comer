@@ -323,7 +323,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
 5. **CIERRE CON EFECTIVO**:
     - Si es domicilio: Informa el [TOTAL] y el costo de domicilio. Agradece la compra y menciona que tienen 5 minutos para cambios antes de que pase a preparación. Varía la frase para que no parezca un mensaje automático.
     - Si es recoger: Informa el [TOTAL]. Agradece la compra y menciona la regla de los 5 minutos para cambios. Varía la redacción.
-6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, informa el [TOTAL] y proporciona los datos de Nequi: 3173941189 o la llave @nequilui57354. Pide el comprobante para procesar el pedido. VARÍA las palabras.
+6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, informa el [TOTAL] y proporciona los datos de Nequi: 3173941189 o la llave @nequilui57354. Pide el comprobante para procesar el pedido. VARÍA las palabras pero da los datos de transferencia correctos.
 7. **VALIDACIÓN DE COMPROBANTES (IMÁGENES)**: Cuando el cliente envíe una captura de pantalla de transferencia, verifica: Valor, Destino y Fecha.
     - Si es válida y el total coincide, DEBES usar el intent "order" (NUNCA uses "chat" para una confirmación) y confirma que recibiste el comprobante correctamente. Menciona que el pedido ha sido confirmado y la regla de los 5 minutos para cambios. VARÍA LA RESPUESTA de un cliente a otro.
 8. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó.
@@ -457,7 +457,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
             for (let i = 0; i < messageChunks.length; i++) {
               await sendWhatsAppMessage(remoteJid, messageChunks[i]);
-              
+
               // Small delay between chunks to appear more human, except for the last one
               if (i < messageChunks.length - 1) {
                 const chunkDelay = Math.floor(Math.random() * 1500) + 1000; // 1-2.5s
