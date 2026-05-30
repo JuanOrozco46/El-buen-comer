@@ -228,8 +228,9 @@ export async function POST(req: Request) {
         const timeValue = nowBogota.getHours() + nowBogota.getMinutes() / 60;
         const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
 
-        let timeStatus = "";
-        if (globalSettings?.isPanicModeActive) timeStatus = `\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. NO USES EL INTENT ORDER.
+        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos normalmente y usa el intent 'order' cuando tengas todos los datos.";
+        if (globalSettings?.isPanicModeActive) {
+          timeStatus = `\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. NO USES EL INTENT ORDER.
 INSTRUCCIONES PARA VARIAR LA RESPUESTA:
 - NUNCA repitas la misma frase dos veces seguidas.
 - Usa DIFERENTES ESTRUCTURAS cada vez. Aquí tienes ejemplos de estilos distintos (NO los copies textualmente, INSPÍRATE en ellos para crear variaciones nuevas):
@@ -261,10 +262,15 @@ Estilo con sugerencia de hora:
 
 - IMPORTANTE: Genera una respuesta NUEVA cada vez, variando longitud, tono, uso de emojis y estructura. No repitas patrones.
 - Usa intent "chat" siempre.`;
-        else if (timeValue < 10) timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 10:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
-        else if (timeValue >= 18.5) timeStatus = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM).";
-        else if (timeValue >= 18) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). PAGO TRANSFERENCIA OBLIGATORIO.";
-        else if (timeValue >= 16) timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 4:00 PM).";
+        } else if (timeValue < 10) {
+          timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 10:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
+        } else if (timeValue >= 18.5) {
+          timeStatus = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM). Informa que ya cerramos y que volvemos mañana a las 10 AM.";
+        } else if (timeValue >= 18) {
+          timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). IMPORTANTE: PAGO POR TRANSFERENCIA ES OBLIGATORIO para estos pedidos de última hora.";
+        } else if (timeValue >= 16) {
+          timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 4:00 PM). Informa que ya no hay domicilios disponibles hoy.";
+        }
 
         if (globalSettings?.isPickupOnlyActive) {
           timeStatus += "\n⚠️ AVISO IMPORTANTE: Actualmente SOLO estamos aceptando pedidos para RECOGER en el local. NO HAY DOMICILIOS. Asegúrate de que el cliente lo sepa. VARÍA la forma de decirlo cada vez.";
