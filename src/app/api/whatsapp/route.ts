@@ -197,11 +197,16 @@ export async function POST(req: Request) {
         const currentChat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
         let history: any[] = (currentChat?.history as any[]) || [];
 
-        // --- HISTORY EXPIRATION (2 HOURS) ---
-        const lastUpdate = new Date(currentChat!.updatedAt).getTime();
+        // --- HISTORY EXPIRATION (DAY CHANGE OR 2 HOURS) ---
+        const lastUpdateDate = new Date(currentChat!.updatedAt);
+        const now = new Date();
+        const lastDayStr = lastUpdateDate.toLocaleDateString("en-US", { timeZone: "America/Bogota" });
+        const currentDayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota" });
+        const lastUpdateTime = lastUpdateDate.getTime();
         const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-        if (lastUpdate < twoHoursAgo) {
-          console.log(`[WhatsApp Bot] History expired (>2h) for ${senderPhone}. Resetting.`);
+
+        if (lastDayStr !== currentDayStr || lastUpdateTime < twoHoursAgo) {
+          console.log(`[WhatsApp Bot] History cleared (Day change or >2h) for ${senderPhone}.`);
           history = [];
         }
 
@@ -223,12 +228,20 @@ export async function POST(req: Request) {
         }
 
 
-        // Timings
-        const nowBogota = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
-        const timeValue = nowBogota.getHours() + nowBogota.getMinutes() / 60;
-        const currentDate = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
+        // ---------------------------------------------------------
+        // ROBUST TIME CALCULATION (Bogota)
+        // ---------------------------------------------------------
+        const bogotaStr = new Date().toLocaleString("en-US", { timeZone: "America/Bogota", hour12: false });
+        // Expected format: "MM/DD/YYYY, HH:mm:ss"
+        const timePart = bogotaStr.split(", ")[1];
+        const [hStr, mStr] = timePart.split(":");
+        const hours = parseInt(hStr, 10);
+        const minutes = parseInt(mStr, 10);
+        const timeValue = hours + minutes / 60;
+        const currentDate = bogotaStr; 
+        console.log(`[WhatsApp Bot] Time Check for ${senderPhone}: ${hStr}:${mStr} (Value: ${timeValue})`);
 
-        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos normalmente y usa el intent 'order' cuando tengas todos los datos.";
+        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos normalmente de 10:00 AM a 6:30 PM. Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
         if (globalSettings?.isPanicModeActive) {
           timeStatus = `\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. NO USES EL INTENT ORDER.
 INSTRUCCIONES PARA VARIAR LA RESPUESTA:
@@ -263,13 +276,13 @@ Estilo con sugerencia de hora:
 - IMPORTANTE: Genera una respuesta NUEVA cada vez, variando longitud, tono, uso de emojis y estructura. No repitas patrones.
 - Usa intent "chat" siempre.`;
         } else if (timeValue < 10) {
-          timeStatus = "\n⚠️ ESTADO: ANTES DE APERTURA. Toma el pedido normalmente pero AL CLIENTE SIEMPRE ACLÁRALE que su pedido se empezará a realizar a partir de las 10:00 AM. Si es un encargo para una hora específica, pon esa hora en las notas del pedido (notes).";
+          timeStatus = `\n⚠️ ESTADO: PRE-APERTURA (Son las ${hStr}:${mStr}). Atiende pero ACLARA que empezamos a las 10:00 AM.`;
         } else if (timeValue >= 18.5) {
-          timeStatus = "\n⚠️ ESTADO: CERRADO (dejamos de tomar pedidos a las 6:30 PM). Informa que ya cerramos y que volvemos mañana a las 10 AM.";
+          timeStatus = `\n⚠️ ESTADO: CERRADO (Son las ${hStr}:${mStr}). Ya pasaron las 6:30 PM. NO TOMES MÁS PEDIDOS HOY. Dile al cliente que volvemos mañana a las 10 AM.`;
         } else if (timeValue >= 18) {
-          timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 6:00 PM). IMPORTANTE: PAGO POR TRANSFERENCIA ES OBLIGATORIO para estos pedidos de última hora.";
+          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 6:00 PM. Únicamente pedidos para recoger en local y con PAGO POR TRANSFERENCIA/NEQUI anticipado.`;
         } else if (timeValue >= 16) {
-          timeStatus = "\n⚠️ ESTADO: SOLO RECOGER (pasaron 4:00 PM). Informa que ya no hay domicilios disponibles hoy.";
+          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 4:00 PM. No hay domicilios disponibles hoy, solo pasar a recoger al local.`;
         }
 
         if (globalSettings?.isPickupOnlyActive) {
