@@ -30,6 +30,9 @@ const MIN_INTER_USER_DELAY = 3000; // Minimum 3s between replies to different us
 // Prevents mass-sending rejection messages that could trigger WhatsApp spam detection
 let panicModeReplyTimestamps: number[] = [];
 const PANIC_MAX_REPLIES_PER_MINUTE = 10;
+const PANIC_COOLDOWN_PER_USER = 1000 * 60 * 5; // 5 minutes ignore if too many messages
+const PANIC_MAX_USER_REPLIES = 3; // Max replies to same user in panic mode window
+const userPanicReplies: Record<string, { count: number, lastTime: number }> = {};
 
 /**
  * GET /api/whatsapp
@@ -164,10 +167,6 @@ export async function POST(req: Request) {
 
       while (loops < 5) {
         if (isFirstIteration) {
-          // Random delay between 5-20 seconds to appear more human
-          const humanDelay = Math.floor(Math.random() * 15000) + 5000;
-          console.log(`[WhatsApp Bot] Waiting ${humanDelay}ms before processing for ${senderPhone}`);
-          await new Promise(r => setTimeout(r, humanDelay));
           isFirstIteration = false;
         }
 
@@ -186,12 +185,32 @@ export async function POST(req: Request) {
 
         if (!aggregatedText && aggregatedMedia.length === 0) break;
 
+        const globalSettings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
+
+        // --- SIMULATED READING TIME (First pass only) ---
+        // if this was the first run of the loop, wait as if reading the collected messages
+        if (loops === 0) {
+          const messageLength = aggregatedText.length || 10;
+          const readingSpeed = Math.floor(Math.random() * 20) + 25; // 25-45ms per char
+          const baseDelay = Math.floor(Math.random() * 1500) + 1000; // 1-2.5s base
+          let readingDelay = Math.min(8000, baseDelay + (messageLength * readingSpeed));
+
+          // ADD: Extra delay for Panic Mode (simulation of saturation)
+          if (globalSettings?.isPanicModeActive) {
+            const panicExtra = Math.floor(Math.random() * 30000) + 20000; // 20-50s extra
+            console.log(`[WhatsApp Bot] Panic Mode Active: Adding extra ${panicExtra}ms saturations delay.`);
+            readingDelay += panicExtra;
+          }
+
+          console.log(`[WhatsApp Bot] Simulated reading time: waiting ${readingDelay}ms for ${senderPhone} (length: ${messageLength})`);
+          await new Promise(r => setTimeout(r, readingDelay));
+        }
+
         // Fetch Fresh Data
         let products = await prisma.product.findMany({ where: { isActive: true, isSoldOut: false }, include: { sizes: true } });
 
         // Fresh Data fetched above already filters for isActive and isSoldOut
 
-        const globalSettings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
         const menuText = products.map((p) => `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')).join('\n\n');
 
         const currentChat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
@@ -286,7 +305,7 @@ Estilo con sugerencia de hora:
         }
 
         if (globalSettings?.isPickupOnlyActive) {
-          timeStatus += "\n⚠️ AVISO IMPORTANTE: Actualmente SOLO estamos aceptando pedidos para RECOGER en el local. NO HAY DOMICILIOS. Asegúrate de que el cliente lo sepa. VARÍA la forma de decirlo cada vez.";
+          timeStatus += "\n⚠️ AVISO CRÍTICO (MODO RECOGER ACTIVO): Actualmente SOLO aceptamos pedidos para RECOGER en el local. NO HAY DOMICILIOS bajo ninguna circunstancia. Debes INTEGRAR este aviso de forma natural y VARIADA en tu respuesta. NUNCA uses la misma frase dos veces.";
         }
 
         const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Calle 6 #39A-06 Entrada del barrio Rockefeller, Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.${timeStatus}
@@ -427,11 +446,29 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           // --- PANIC MODE RATE LIMIT: skip reply if too many rejections sent recently ---
           if (globalSettings?.isPanicModeActive) {
             const now = Date.now();
+            
+            // Global limit
             panicModeReplyTimestamps = panicModeReplyTimestamps.filter(t => now - t < 60000);
             if (panicModeReplyTimestamps.length >= PANIC_MAX_REPLIES_PER_MINUTE) {
-              console.log(`[WhatsApp Bot] Panic rate limit reached (${PANIC_MAX_REPLIES_PER_MINUTE}/min). Skipping reply to ${senderPhone}`);
-              break; // Exit the processing loop silently
+              console.log(`[WhatsApp Bot] Panic global rate limit reached. Skipping reply to ${senderPhone}`);
+              break;
             }
+
+            // Individual user limit (Cooldown)
+            const userRef = userPanicReplies[senderPhone] || { count: 0, lastTime: 0 };
+            if (now - userRef.lastTime < PANIC_COOLDOWN_PER_USER) {
+              if (userRef.count >= PANIC_MAX_USER_REPLIES) {
+                console.log(`[WhatsApp Bot] Panic user cooldown active for ${senderPhone}. Skipping reply.`);
+                break;
+              }
+            } else {
+              userRef.count = 0; // Reset after cooldown
+            }
+            
+            userRef.count++;
+            userRef.lastTime = now;
+            userPanicReplies[senderPhone] = userRef;
+            
             panicModeReplyTimestamps.push(now);
           }
 
@@ -452,22 +489,6 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
           if (geminiResponse.intent === "send_menu") {
             await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
-
-            // Extra message if Pickup Only is active
-            if (globalSettings?.isPickupOnlyActive) {
-              const pickupMessages = [
-                "⚠️ *AVISO:* Por ahora solo estamos recibiendo pedidos para *RECOGER* en el local. ¡Te esperamos!",
-                "🛵 *Nota:* En este momento no contamos con domiciliarios, solo estamos entregando pedidos para *recoger*.",
-                "📍 *Atención:* Solo tenemos disponible la opción de *recoger* en el restaurante por ahora. No hay domicilios activos.",
-                "🥘 Por el momento solo estamos manejando pedidos para *RECOGER*. Si deseas, puedes pasar por el tuyo al local en un momento.",
-                "🚫 Estamos sin domicilios ahora mismo. Únicamente pedidos para *recoger* en el punto físico disponibles."
-              ];
-              const randomMessage = pickupMessages[Math.floor(Math.random() * pickupMessages.length)];
-
-              // Brief delay before the extra message
-              await new Promise(r => setTimeout(r, 2000));
-              await sendWhatsAppMessage(remoteJid, randomMessage);
-            }
           }
           else {
             // Fragmenatación de mensajes: dividir por doble salto de línea
@@ -479,10 +500,10 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
               // Small delay between chunks to appear more human, except for the last one
               if (i < messageChunks.length - 1) {
-                const chunkDelay = Math.floor(Math.random() * 1500) + 1000; // 1-2.5s
+                const chunkDelay = Math.floor(Math.random() * 2500) + 1000; // 1-3.5s
                 console.log(`[WhatsApp Bot] Fragmentation delay: waiting ${chunkDelay}ms before next chunk for ${senderPhone}`);
                 await new Promise(r => setTimeout(r, chunkDelay));
-                await sendTypingIndicator(remoteJid, chunkDelay + 500); // Keep typing indicator alive
+                await sendTypingIndicator(remoteJid, chunkDelay + 800); // Keep typing indicator alive
               }
             }
           }

@@ -57,7 +57,7 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
         body: JSON.stringify({
           number: to,
           options: {
-            delay: 500,
+            delay: Math.floor(Math.random() * 800) + 400, // 400-1200ms
             presence: "composing",
           },
           text: message,
