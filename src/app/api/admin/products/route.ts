@@ -142,6 +142,32 @@ export async function PUT(req: Request) {
   }
 }
 
+export async function PATCH(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.role !== 'ADMIN') {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { id, isActive, isSoldOut } = body;
+
+    const updateData: any = {};
+    if (isActive !== undefined) updateData.isActive = isActive;
+    if (isSoldOut !== undefined) updateData.isSoldOut = isSoldOut;
+
+    const product = await prisma.product.update({
+      where: { id: Number(id) },
+      data: updateData
+    });
+
+    return NextResponse.json(product);
+  } catch (error) {
+    console.error('PATCH Admin Product Error:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: Request) {
   try {
     const session = await getServerSession(authOptions);

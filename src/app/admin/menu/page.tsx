@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { 
   Plus, Search, Loader2, Trash2, Edit2, Save, X, 
-  Utensils, ChevronRight, Layers, Beaker, Tag
+  Utensils, ChevronRight, Layers, Beaker, Tag, Power
 } from "lucide-react";
 
 interface Ingredient {
@@ -164,6 +164,21 @@ export default function MenuManagementPage() {
     }
   };
 
+  const toggleProductStatus = async (id: number, currentStatus: boolean) => {
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, isActive: !currentStatus })
+      });
+      if (res.ok) {
+        setProducts(products.map(p => p.id === id ? { ...p, isActive: !currentStatus } : p));
+      }
+    } catch (error) {
+      console.error("Error toggling product status:", error);
+    }
+  };
+
   return (
     <div className="flex-1 bg-white font-sans h-screen overflow-hidden flex flex-col">
       <main className="flex-1 flex flex-col p-8 md:p-12 overflow-hidden bg-white">
@@ -199,13 +214,27 @@ export default function MenuManagementPage() {
                       </div>
                       <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{product.category}</span>
                     </div>
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => openEdit(product)} className="p-2 bg-zinc-100 rounded-xl text-zinc-600 hover:bg-orange-500 hover:text-white transition-all"><Edit2 size={16} /></button>
-                      <button onClick={() => handleDelete(product.id)} className="p-2 bg-zinc-100 rounded-xl text-zinc-600 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16} /></button>
+                    <div className="flex gap-2 items-center">
+                      <button 
+                        onClick={() => toggleProductStatus(product.id, product.isActive)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                          product.isActive 
+                            ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" 
+                            : "bg-zinc-100 text-zinc-400 hover:bg-zinc-200"
+                        }`}
+                        title={product.isActive ? "Desactivar plato" : "Activar plato"}
+                      >
+                        <Power size={14} />
+                        <span className="hidden sm:inline">{product.isActive ? "Activo" : "Inactivo"}</span>
+                      </button>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => openEdit(product)} className="p-2 bg-zinc-100 rounded-xl text-zinc-600 hover:bg-orange-500 hover:text-white transition-all"><Edit2 size={16} /></button>
+                        <button onClick={() => handleDelete(product.id)} className="p-2 bg-zinc-100 rounded-xl text-zinc-600 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16} /></button>
+                      </div>
                     </div>
                   </div>
 
-                  <h3 className="text-2xl font-black text-zinc-900 mb-2 leading-tight">{product.name}</h3>
+                  <h3 className={`text-2xl font-black mb-2 leading-tight transition-colors ${product.isActive ? "text-zinc-900" : "text-zinc-400"}`}>{product.name}</h3>
                   <p className="text-sm font-medium text-zinc-500 line-clamp-2 mb-6">{product.description}</p>
 
                   <div className="mt-auto pt-6 border-t border-zinc-100">

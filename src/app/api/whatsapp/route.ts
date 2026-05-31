@@ -197,7 +197,7 @@ export async function POST(req: Request) {
 
           // ADD: Extra delay for Panic Mode (simulation of saturation)
           if (globalSettings?.isPanicModeActive) {
-            const panicExtra = Math.floor(Math.random() * 30000) + 20000; // 20-50s extra
+            const panicExtra = Math.floor(Math.random() * 90000) + 30000; // 30-120s extra
             console.log(`[WhatsApp Bot] Panic Mode Active: Adding extra ${panicExtra}ms saturations delay.`);
             readingDelay += panicExtra;
           }
@@ -451,25 +451,28 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             panicModeReplyTimestamps = panicModeReplyTimestamps.filter(t => now - t < 60000);
             if (panicModeReplyTimestamps.length >= PANIC_MAX_REPLIES_PER_MINUTE) {
               console.log(`[WhatsApp Bot] Panic global rate limit reached. Skipping reply to ${senderPhone}`);
+              // CRITICAL: Clear buffer to avoid spam later
+              await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
               break;
             }
 
-            // Individual user limit (Cooldown)
+            // Individual user limit (Hardened Panic: Only ONE reply per session)
             const userRef = userPanicReplies[senderPhone] || { count: 0, lastTime: 0 };
-            if (now - userRef.lastTime < PANIC_COOLDOWN_PER_USER) {
-              if (userRef.count >= PANIC_MAX_USER_REPLIES) {
-                console.log(`[WhatsApp Bot] Panic user cooldown active for ${senderPhone}. Skipping reply.`);
-                break;
-              }
-            } else {
-              userRef.count = 0; // Reset after cooldown
+            if (userRef.count >= 1) {
+              console.log(`[WhatsApp Bot] Panic: User ${senderPhone} already received the rejection notice. Ignoring.`);
+              // CRITICAL: Clear buffer so these ignored messages don't reappear when Normal Mode returns
+              await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
+              break;
             }
             
-            userRef.count++;
+            userRef.count = 1;
             userRef.lastTime = now;
             userPanicReplies[senderPhone] = userRef;
             
             panicModeReplyTimestamps.push(now);
+          } else {
+            // Reset panic count if NOT in panic mode (so we can reply again next time panic is ON)
+            if (userPanicReplies[senderPhone]) delete userPanicReplies[senderPhone];
           }
 
           // --- GLOBAL QUEUE: wait if another reply was sent too recently ---
