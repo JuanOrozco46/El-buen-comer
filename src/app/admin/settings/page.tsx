@@ -132,9 +132,26 @@ export default function SettingsPage() {
     try {
       const res = await fetch("/api/admin/whatsapp/qr");
       const data = await res.json();
-      setWaQr(data.qr || null);
-      if (data.connected) setWaStatus("CONNECTED");
-    } catch { setWaQr(null); }
+      
+      if (data.qr) {
+        setWaQr(data.qr);
+        console.log("QR code received successfully");
+      } else if (data.connected) {
+        setWaStatus("CONNECTED");
+        setWaQr(null);
+        alert("La instancia ya está conectada.");
+      } else if (data.error) {
+        alert(`Error al obtener QR: ${data.error}`);
+        setWaQr(null);
+      } else {
+        console.log("No QR found in response:", data);
+        setWaQr(null);
+      }
+    } catch (err) { 
+      console.error("Fetch QR error:", err);
+      setWaQr(null); 
+      alert("Error de conexión al obtener el código QR.");
+    }
   };
 
   const handleWaTestSend = async () => {

@@ -4,7 +4,7 @@ import { authOptions } from "../../../../lib/auth";
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
-const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME;
+const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME || "Elbuencomer";
 
 /**
  * GET /api/admin/whatsapp
@@ -90,6 +90,9 @@ export async function POST(req: Request) {
       apikey: EVOLUTION_API_KEY,
     };
 
+    console.log("[WhatsApp Admin] Initializing instance:", EVOLUTION_INSTANCE_NAME);
+    console.log("[WhatsApp Admin] Base URL:", baseUrl);
+
     // 1. Create instance (or skip if already exists)
     const createEndpoints = [
       `${baseUrl}/instance/create`,
@@ -99,6 +102,7 @@ export async function POST(req: Request) {
     let created = false;
     for (const ep of createEndpoints) {
       try {
+        console.log("[WhatsApp Admin] Trying create at:", ep);
         const res = await fetch(ep, {
           method: "POST",
           headers,
@@ -110,22 +114,21 @@ export async function POST(req: Request) {
           }),
         });
 
-        if (res.ok || res.status === 403) {
-          created = true;
-          break;
-        }
+        const data = await res.json().catch(() => ({}));
+        console.log(`[WhatsApp Admin] Create at ${ep} returned status: ${res.status}`, data);
 
-        const errData = await res.json().catch(() => ({}));
-        if (JSON.stringify(errData).includes("already exists")) {
+        if (res.ok || res.status === 403 || JSON.stringify(data).includes("already exists")) {
           created = true;
           break;
         }
-      } catch {
+      } catch (err: any) {
+        console.error(`[WhatsApp Admin] Create error at ${ep}:`, err.message);
         continue;
       }
     }
 
     if (!created) {
+      console.error("[WhatsApp Admin] Failed to create instance after trying all endpoints.");
       return NextResponse.json(
         { error: "No se pudo crear la instancia de Evolution." },
         { status: 500 }
@@ -136,6 +139,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const appUrl = body.appUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const webhookUrl = `${appUrl}/api/whatsapp`;
+    console.log("[WhatsApp Admin] Configuring webhook URL:", webhookUrl);
 
     const webhookEndpoints = [
       `${baseUrl}/webhook/instance/set`,

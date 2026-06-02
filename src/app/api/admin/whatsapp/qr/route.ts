@@ -4,7 +4,7 @@ import { authOptions } from "../../../../../lib/auth";
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
-const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME;
+const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME || "Elbuencomer";
 
 /**
  * GET /api/admin/whatsapp/qr
@@ -30,18 +30,29 @@ export async function GET() {
     const endpoints = [
       `${baseUrl}/instance/connect/${EVOLUTION_INSTANCE_NAME}`,
       `${baseUrl}/v2/instance/connect/${EVOLUTION_INSTANCE_NAME}`,
+      `${baseUrl}/instance/qrcode/${EVOLUTION_INSTANCE_NAME}`, // Alternative endpoint
+      `${baseUrl}/instance/connect?instanceName=${EVOLUTION_INSTANCE_NAME}`, // Fallback query param style
     ];
+
+    console.log("[WhatsApp QR] Attempting to connect instance:", EVOLUTION_INSTANCE_NAME);
 
     for (const url of endpoints) {
       try {
+        console.log("[WhatsApp QR] Trying endpoint:", url);
         // Some versions need GET, others need POST
         let res = await fetch(url, { headers });
-        if (res.status === 405) {
+        console.log(`[WhatsApp QR] ${url} returned status: ${res.status}`);
+
+        if (res.status === 405 || res.status === 404) {
+          // If 405 Method Not Allowed or 404 Not Found, try POST as a fallback
+          console.log(`[WhatsApp QR] ${res.status === 404 ? "404 Not Found" : "405 Method Not Allowed"}. Retrying with POST...`);
           res = await fetch(url, { method: "POST", headers, body: "{}" });
+          console.log(`[WhatsApp QR] POST ${url} returned status: ${res.status}`);
         }
 
         if (res.ok) {
           const data = await res.json();
+          console.log("[WhatsApp QR] Successful response from Evolution API.");
 
           // Normalize QR from various Evolution API response shapes
           let base64 = null;
@@ -61,7 +72,7 @@ export async function GET() {
           }
 
           // If connected, no QR needed
-          if (data.instance?.state === "open") {
+          if (data.instance?.state === "open" || data.state === "open") {
             return NextResponse.json({
               qr: null,
               connected: true,
@@ -69,15 +80,18 @@ export async function GET() {
             });
           }
 
+          console.warn("[WhatsApp QR] Response OK but no QR found in data:", JSON.stringify(data));
           return NextResponse.json({ qr: null, raw: data });
         }
-      } catch {
+      } catch (err: any) {
+        console.error("[WhatsApp QR] Fetch error for", url, ":", err.message);
         continue;
       }
     }
 
+    console.error("[WhatsApp QR] All endpoints failed to return a QR code.");
     return NextResponse.json(
-      { error: "No se pudo obtener el código QR." },
+      { error: "No se pudo obtener el código QR de la Evolution API." },
       { status: 404 }
     );
   } catch (error: any) {
