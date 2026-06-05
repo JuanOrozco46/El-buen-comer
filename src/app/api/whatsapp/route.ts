@@ -252,12 +252,23 @@ export async function POST(req: Request) {
         // ---------------------------------------------------------
         const bogotaStr = new Date().toLocaleString("en-US", { timeZone: "America/Bogota", hour12: false });
         // Expected format: "MM/DD/YYYY, HH:mm:ss"
-        const timePart = bogotaStr.split(", ")[1];
+        const timePart = bogotaStr.split(", ")[1] || "00:00:00";
         const [hStr, mStr] = timePart.split(":");
-        const hours = parseInt(hStr, 10);
-        const minutes = parseInt(mStr, 10);
+        const hours = parseInt(hStr || "0", 10);
+        const minutes = parseInt(mStr || "0", 10);
         const timeValue = hours + minutes / 60;
-        const currentDate = bogotaStr; 
+        const currentDate = new Date().toLocaleString("es-CO", { 
+          timeZone: "America/Bogota",
+          weekday: "long", 
+          year: "numeric", 
+          month: "long", 
+          day: "numeric"
+        }) + " a las " + new Date().toLocaleTimeString("es-CO", {
+          timeZone: "America/Bogota",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true
+        }); 
         console.log(`[WhatsApp Bot] Time Check for ${senderPhone}: ${hStr}:${mStr} (Value: ${timeValue})`);
 
         let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos normalmente de 10:00 AM a 6:30 PM. Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
