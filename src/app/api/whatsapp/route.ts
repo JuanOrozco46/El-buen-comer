@@ -644,7 +644,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                 const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
                 const existing = await tx.order.findFirst({ 
                   where: { 
-                    customerPhone: lookupPhone, 
+                    customerPhone: lookupPhone || "Desconocido", 
                     status: { in: ["PENDING", "PREPARING"] }, 
                     createdAt: { gte: SIX_HOURS_AGO } 
                   }, 
@@ -655,20 +655,26 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                 let name = od.customerName || pushName || `WA: ${senderPhone}`;
                 if (od.customerAddress?.toLowerCase().includes("recoger")) name = `Recoger - ${name.replace(/^Recoger - /, '')}`;
 
+                const userIdValue = Number(user?.id) || 1; // Fallback to ID 1 if somehow user is null
+
                 if (existing) {
                   console.log(`[WhatsApp Bot] Updating existing order #${existing.id} for ${senderPhone}`);
                   for (const oi of existing.items) {
                     const recs = await tx.recipe.findMany({ where: { productId: oi.productId, sizeName: oi.sizeName } });
-                    for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { increment: Number(r.quantity) * oi.quantity } } });
+                    for (const r of recs) {
+                      if (r.ingredientId) {
+                        await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { increment: (Number(r.quantity) || 0) * (Number(oi.quantity) || 0) } } });
+                      }
+                    }
                   }
                   await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
                   await tx.order.update({ 
                     where: { id: existing.id }, 
                     data: { 
-                      customerName: name || null, 
-                      customerAddress: od.customerAddress || null, 
-                      notes: additionalNotes || null, 
-                      total: total, 
+                      customerName: (name || "Cliente").substring(0, 191), 
+                      customerAddress: (od.customerAddress || "").substring(0, 191) || null, 
+                      notes: (additionalNotes || "").substring(0, 500) || null, 
+                      total: Number(total) || 0, 
                       deliveryFee: Number(od.deliveryFee) || 0, 
                       source: orderSource, 
                       status: "PENDING", 
@@ -680,15 +686,15 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                   console.log(`[WhatsApp Bot] Creating new order for ${senderPhone}`);
                   await tx.order.create({ 
                     data: { 
-                      userId: user.id as number, 
-                      customerName: name || null, 
-                      customerPhone: lookupPhone, 
-                      customerAddress: od.customerAddress || null, 
+                      userId: userIdValue, 
+                      customerName: (name || "Cliente").substring(0, 191), 
+                      customerPhone: (lookupPhone || senderPhone).substring(0, 191), 
+                      customerAddress: (od.customerAddress || "").substring(0, 191) || null, 
                       source: orderSource, 
                       status: "PENDING", 
-                      total: total, 
+                      total: Number(total) || 0, 
                       deliveryFee: Number(od.deliveryFee) || 0, 
-                      notes: additionalNotes || null, 
+                      notes: (additionalNotes || "").substring(0, 500) || null, 
                       items: { create: validItems } 
                     } 
                   });
@@ -696,7 +702,11 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
                 for (const vi of validItems) {
                   const recs = await tx.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
-                  for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { decrement: Number(r.quantity) * vi.quantity } } });
+                  for (const r of recs) {
+                    if (r.ingredientId) {
+                      await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { decrement: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0) } } });
+                    }
+                  }
                 }
               }, {
                 isolationLevel: 'Serializable', // Ensure no race conditions on order creation
