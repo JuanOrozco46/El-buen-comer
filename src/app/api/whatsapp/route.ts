@@ -741,11 +741,14 @@ FORMATO DE SALIDA (ESTRICTO JSON):
     }
   } catch (error: any) {
     console.error("[WhatsApp Webhook] General Error:", error);
+    // Disabled at user request to avoid message fatigue
+    /*
     const isT = error.message?.includes("503") || error.message?.includes("Service Unavailable") || error.message?.includes("high demand") || error.message?.includes("fetch failed");
     if (!isT && Date.now() - lastAlertTimestamp > ALERT_COOLDOWN) {
       lastAlertTimestamp = Date.now();
       try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[⚠️ ALERT BOT]\nError: ${error.message}\nCliente: ${senderPhone}`); } catch (e) { }
     }
+    */
   }
   return NextResponse.json({ received: true });
 }
