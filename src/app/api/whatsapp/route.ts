@@ -601,20 +601,27 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             const normalizedProducts = products.map(p => ({ ...p, normalizedName: normalizeString(p.name) }));
 
             for (const i of od.items) {
-              const inputProductName = normalizeString(i.productName);
+              const inputProductName = normalizeString(i.productName || "");
               const p = normalizedProducts.find(x =>
                 x.normalizedName === inputProductName ||
                 x.normalizedName.includes(inputProductName) ||
                 inputProductName.includes(x.normalizedName)
               );
 
-              if (p) {
-                const inputSizeName = normalizeString(i.sizeName);
+              if (p && p.sizes && p.sizes.length > 0) {
+                const inputSizeName = normalizeString(i.sizeName || "");
                 const s = p.sizes.find(z => normalizeString(z.name) === inputSizeName) || p.sizes[0];
-                validItems.push({ productId: p.id, sizeName: s.name, quantity: Number(i.quantity) || 1, price: Number(s.price), notes: i.notes || null });
-                total += Number(s.price) * (Number(i.quantity) || 1);
+                
+                validItems.push({ 
+                  productId: p.id, 
+                  sizeName: s.name || "Personal", 
+                  quantity: Math.max(1, Number(i.quantity) || 1), 
+                  price: Number(s.price) || 0, 
+                  notes: i.notes || null 
+                });
+                total += (Number(s.price) || 0) * (Math.max(1, Number(i.quantity) || 1));
               } else {
-                console.warn(`[WhatsApp Bot] Product not matched: "${i.productName}" for ${senderPhone}`);
+                console.warn(`[WhatsApp Bot] Product not matched or has no sizes: "${i.productName}" for ${senderPhone}`);
               }
             }
 
