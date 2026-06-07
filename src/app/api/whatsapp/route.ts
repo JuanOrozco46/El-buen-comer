@@ -145,7 +145,12 @@ export async function POST(req: Request) {
 
     // 0. Buffer message
     await (prisma as any).whatsAppMessageBuffer.create({
-      data: { phone: senderPhone, content: messageText, mimeType: mediaItem?.mime || null, base64: mediaItem?.base64 || null }
+      data: { 
+        phone: senderPhone, 
+        content: messageText || null, 
+        mimeType: mediaItem?.mime || null, 
+        base64: mediaItem?.base64 || null 
+      }
     });
 
     // 1. Lock check
@@ -576,14 +581,14 @@ FORMATO DE SALIDA (ESTRICTO JSON):
              geminiResponse.replyText = variations[Math.floor(Math.random() * variations.length)];
           }
 
-          if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
+            if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
             const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
             // Try to use the active waiter logged into the POS, but ONLY if they have the WAITER role
             let user: any = null;
             if (settings?.activeWaiterId) {
               user = await prisma.user.findFirst({
-                where: { id: settings.activeWaiterId, role: { in: ["WAITER", "CASHIER"] } }
+                where: { id: Number(settings.activeWaiterId), role: { in: ["WAITER", "CASHIER"] } }
               });
             }
             // Fallback to the first available WAITER or CASHIER in the database
