@@ -134,7 +134,7 @@ export async function POST(req: Request) {
             history[history.length - 1].text?.includes(messageText.substring(0, 50)));
 
         if (!isDuplicate) {
-          const updatedHistory = [...history, { role: "model", text: messageText }].slice(-50);
+          const updatedHistory = JSON.parse(JSON.stringify([...history, { role: "model", text: messageText }].slice(-50)));
           await prisma.whatsAppChat.update({ where: { phone: senderPhone }, data: { history: updatedHistory, updatedAt: new Date() } });
           console.log(`[WhatsApp Bot] Manual message synced to history for ${senderPhone}`);
         }
@@ -250,10 +250,10 @@ export async function POST(req: Request) {
           await new Promise(r => setTimeout(r, 2000));
           await sendWhatsAppMessage(remoteJid, "Transferencia comprobada. ✅");
 
-          const shortHistory = [
+          const shortHistory = JSON.parse(JSON.stringify([
             { role: "user", text: "[Imagen de transferencia]" },
             { role: "model", text: JSON.stringify({ intent: "chat", replyText: "Transferencia comprobada. ✅" }) }
-          ];
+          ]));
           await prisma.whatsAppChat.update({ where: { phone: senderPhone }, data: { history: shortHistory, updatedAt: new Date(), isProcessing: false } });
           await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
           break; // Exit the loop
@@ -420,7 +420,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           messageParts.push({ inlineData: { mimeType: m.mime, data: m.base64 } });
         }
 
-        const preliminaryHistory = [...history, { role: "user", text: aggregatedText + (aggregatedMedia.length > 0 ? " [Contenía multimedia]" : "") }];
+        const preliminaryHistory = JSON.parse(JSON.stringify([...history, { role: "user", text: (aggregatedText || "") + (aggregatedMedia.length > 0 ? " [Contenía multimedia]" : "") }]));
         await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: preliminaryHistory.slice(-50) } });
 
         // Ensure history starts with a 'user' message for Gemini
@@ -538,7 +538,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           // Update global reply timestamp
           lastGlobalReplyTime = Date.now();
 
-          const finalHistory = [...preliminaryHistory, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50);
+          const finalHistory = JSON.parse(JSON.stringify([...preliminaryHistory, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50)));
           await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistory } });
 
           // --- INTENT SAFEGUARD: If bot confirmed in text but used 'chat' intent ---
