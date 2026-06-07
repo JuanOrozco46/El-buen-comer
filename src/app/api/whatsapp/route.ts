@@ -614,18 +614,25 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             }
 
             if (validItems.length > 0 && user) {
-              let pPhone = od.customerPhone || senderPhone;
-              if (pPhone.startsWith("57") && pPhone.length > 10) pPhone = pPhone.substring(2);
+              // FOR WHATSAPP: The absolute identifier for the chat is the sender's phone.
+              // We must NOT allow Gemini to overwrite this for lookup purposes, or another
+              // user mentioning the same contact phone could hijack this order.
+              const lookupPhone = senderPhone; 
+              
+              // If Gemini provided a DIFFERENT contact phone, we preserve it in notes but NOT as the primary key.
+              let additionalNotes = od.notes || "";
+              if (od.customerPhone && normalizarNumero(od.customerPhone) !== senderPhone) {
+                additionalNotes += `\n[TELÉFONO CONTACTO: ${od.customerPhone}]`;
+              }
 
               const orderSource = (globalSettings?.isPickupOnlyActive || od.customerAddress?.toLowerCase().includes("recoger") || !od.customerAddress) ? "TAKEAWAY" : "DELIVERY";
 
               await prisma.$transaction(async (tx) => {
-                // Find existing order INSIDE transaction for atomicity
-                // Increased window to 6 hours to avoid duplicates when customers take time
+                // Find existing order strictly by SENDER phone to avoid cross-chat contamination
                 const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
                 const existing = await tx.order.findFirst({ 
                   where: { 
-                    customerPhone: pPhone, 
+                    customerPhone: lookupPhone, 
                     status: { in: ["PENDING", "PREPARING"] }, 
                     createdAt: { gte: SIX_HOURS_AGO } 
                   }, 
@@ -643,10 +650,36 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                     for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { increment: Number(r.quantity) * oi.quantity } } });
                   }
                   await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
-                  await tx.order.update({ where: { id: existing.id }, data: { customerName: name, customerAddress: od.customerAddress, notes: od.notes, total: total, deliveryFee: Number(od.deliveryFee) || 0, source: orderSource, status: "PENDING", items: { create: validItems }, updatedAt: new Date() } });
+                  await tx.order.update({ 
+                    where: { id: existing.id }, 
+                    data: { 
+                      customerName: name || null, 
+                      customerAddress: od.customerAddress || null, 
+                      notes: additionalNotes || null, 
+                      total: total, 
+                      deliveryFee: Number(od.deliveryFee) || 0, 
+                      source: orderSource, 
+                      status: "PENDING", 
+                      items: { create: validItems }, 
+                      updatedAt: new Date() 
+                    } 
+                  });
                 } else {
                   console.log(`[WhatsApp Bot] Creating new order for ${senderPhone}`);
-                  await tx.order.create({ data: { userId: user.id, customerName: name, customerPhone: pPhone, customerAddress: od.customerAddress, source: orderSource, status: "PENDING", total: total, deliveryFee: Number(od.deliveryFee) || 0, notes: od.notes, items: { create: validItems } } });
+                  await tx.order.create({ 
+                    data: { 
+                      userId: user.id as number, 
+                      customerName: name || null, 
+                      customerPhone: lookupPhone, 
+                      customerAddress: od.customerAddress || null, 
+                      source: orderSource, 
+                      status: "PENDING", 
+                      total: total, 
+                      deliveryFee: Number(od.deliveryFee) || 0, 
+                      notes: additionalNotes || null, 
+                      items: { create: validItems } 
+                    } 
+                  });
                 }
 
                 for (const vi of validItems) {
