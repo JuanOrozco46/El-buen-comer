@@ -242,16 +242,20 @@ export async function POST(req: Request) {
           history = [];
         }
 
-        // --- NEW: Handle Receipt Only without history ---
+        // --- NEW: Handle Receipt Only (Phone orders) ---
         const isOnlyReceipt = aggregatedMedia.length > 0 && aggregatedMedia.every(m => m.type === 'image') && !aggregatedText;
-        if (isOnlyReceipt && history.length === 0) {
-          console.log(`[WhatsApp Bot] Detected receipt only with empty history for ${senderPhone}. Sending short confirmation.`);
+        const FIFTEEN_MINS_AGO = Date.now() - (15 * 60 * 1000);
+        const isFreshConversation = history.length > 0 && new Date(currentChat!.updatedAt).getTime() > FIFTEEN_MINS_AGO;
+
+        if (isOnlyReceipt && !isFreshConversation) {
+          console.log(`[WhatsApp Bot] Detected receipt only (Phone order) for ${senderPhone}. Sending short confirmation.`);
           await sendTypingIndicator(remoteJid, 2000);
           await new Promise(r => setTimeout(r, 2000));
           await sendWhatsAppMessage(remoteJid, "Transferencia comprobada. ✅");
 
           const shortHistory = JSON.parse(JSON.stringify([
-            { role: "user", text: "[Imagen de transferencia]" },
+            ...history.slice(-5), // Keep a bit of context but add the receipt event
+            { role: "user", text: "[Imagen de transferencia - Pedido Externo]" },
             { role: "model", text: JSON.stringify({ intent: "chat", replyText: "Transferencia comprobada. ✅" }) }
           ]));
           await prisma.whatsAppChat.update({ where: { phone: senderPhone }, data: { history: shortHistory, updatedAt: new Date(), isProcessing: false } });
