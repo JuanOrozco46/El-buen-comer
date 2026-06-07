@@ -173,17 +173,25 @@ export async function POST(req: Request) {
         const bufferItems = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone }, orderBy: { createdAt: 'asc' } });
         if (bufferItems.length === 0) break;
 
-        // Collect IDs to delete LATER
+        // Collect IDs to delete
         const itemIds = bufferItems.map((i: any) => i.id);
 
         let aggregatedText = "";
         const aggregatedMedia: any[] = [];
+        let hasImageInBatch = false;
+
         for (const item of bufferItems) {
           if (item.content) aggregatedText += (aggregatedText ? " " : "") + item.content;
-          if (item.base64) aggregatedMedia.push({ base64: item.base64, mime: item.mimeType, type: item.mimeType.startsWith('image') ? 'image' : 'audio' });
+          if (item.base64) {
+            aggregatedMedia.push({ base64: item.base64, mime: item.mimeType, type: item.mimeType.startsWith('image') ? 'image' : 'audio' });
+            if (item.mimeType.startsWith('image')) hasImageInBatch = true;
+          }
         }
 
-        if (!aggregatedText && aggregatedMedia.length === 0) break;
+        if (!aggregatedText && aggregatedMedia.length === 0) {
+          await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
+          break;
+        }
 
         const globalSettings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
 
@@ -529,14 +537,43 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistory } });
 
           // --- INTENT SAFEGUARD: If bot confirmed in text but used 'chat' intent ---
+          // Also check history for recent image if not in current batch
+          const recentHistoryHasImage = history.some((h: any) => h.text?.includes("[Imagen") || h.role === "user" && h.text?.includes("[Contenía multimedia]"));
+          const imagePresent = hasImageInBatch || recentHistoryHasImage;
+
           if (geminiResponse.intent === "chat" && geminiResponse.replyText?.includes("Comprobante recibido correctamente")) {
-            console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Correcting to 'order'.`);
-            if (geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
+            console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Correcting to 'order' because text confirmed receipt.`);
+            if (geminiResponse.orderData && geminiResponse.orderData.items?.length > 0 && imagePresent) {
               geminiResponse.intent = "order";
+            } else if (!imagePresent) {
+              console.error(`[WhatsApp Bot] CRITICAL: Bot claims receipt but NO IMAGE was found for ${senderPhone}. Blocked auto-order.`);
+              geminiResponse.intent = "chat"; // Force back to chat
             } else {
               console.error(`[WhatsApp Bot] CRITICAL: Confirmation sent but orderData is missing for ${senderPhone}.`);
               try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR BOT]\nSe confirmó recibo al cliente ${senderPhone} pero NO se generó orden en sistema.\nRevisar manual.`); } catch (e) { }
             }
+          }
+
+          // Hard check: If payment is Transferencia/Nequi, we MUST have an image
+          const isTransfer = geminiResponse.orderData?.notes?.toLowerCase().includes("transfer") || 
+                           geminiResponse.orderData?.notes?.toLowerCase().includes("nequi") ||
+                           geminiResponse.replyText?.toLowerCase().includes("nequi") ||
+                           geminiResponse.replyText?.toLowerCase().includes("transferencia");
+          
+          if (geminiResponse.intent === "order" && isTransfer && !imagePresent) {
+             console.error(`[WhatsApp Bot] BLOCKING order for ${senderPhone}: Intent ORDER used for Transfer payment but NO IMAGE found.`);
+             geminiResponse.intent = "chat";
+             
+             const variations = [
+               "¡Casi listo! Pero no veo el comprobante de pago. Porfa envíame la imagen para poder confirmar tu pedido. 😊",
+               "Olvidaste adjuntar el comprobante. Apenas mandes la fotico de la transferencia proceso tu orden de una. 👍",
+               "Me falta el soporte del pago para pasar el pedido a cocina. ¿Me lo compartes por acá mismo? 🙏",
+               "Lo siento, para pedidos con transferencia es obligatorio enviar el comprobante. ¡Quedo atento a la imagen!",
+               "Hey, no me ha llegado la imagen de la transferencia. Recuerda enviarla para que el pedido entre a preparación lo antes posible. 🍳",
+               "¡Hola! No veo el comprobante en el chat. Por políticas del local, necesito la imagen para procesar el pedido. ¡Gracias!",
+               "¡Oops! Me falta el pantallazo de Nequi/Transferencia. En cuanto me lo pases te confirmo el pedido. ✅"
+             ];
+             geminiResponse.replyText = variations[Math.floor(Math.random() * variations.length)];
           }
 
           if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
@@ -580,22 +617,35 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               let pPhone = od.customerPhone || senderPhone;
               if (pPhone.startsWith("57") && pPhone.length > 10) pPhone = pPhone.substring(2);
 
-              const existing = await prisma.order.findFirst({ where: { customerPhone: pPhone, status: { in: ["PENDING", "PREPARING"] }, createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } }, include: { items: true } });
-
               const orderSource = (globalSettings?.isPickupOnlyActive || od.customerAddress?.toLowerCase().includes("recoger") || !od.customerAddress) ? "TAKEAWAY" : "DELIVERY";
 
               await prisma.$transaction(async (tx) => {
+                // Find existing order INSIDE transaction for atomicity
+                // Increased window to 6 hours to avoid duplicates when customers take time
+                const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
+                const existing = await tx.order.findFirst({ 
+                  where: { 
+                    customerPhone: pPhone, 
+                    status: { in: ["PENDING", "PREPARING"] }, 
+                    createdAt: { gte: SIX_HOURS_AGO } 
+                  }, 
+                  include: { items: true },
+                  orderBy: { createdAt: 'desc' }
+                });
+
                 let name = od.customerName || pushName || `WA: ${senderPhone}`;
                 if (od.customerAddress?.toLowerCase().includes("recoger")) name = `Recoger - ${name.replace(/^Recoger - /, '')}`;
 
                 if (existing) {
+                  console.log(`[WhatsApp Bot] Updating existing order #${existing.id} for ${senderPhone}`);
                   for (const oi of existing.items) {
                     const recs = await tx.recipe.findMany({ where: { productId: oi.productId, sizeName: oi.sizeName } });
                     for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { increment: Number(r.quantity) * oi.quantity } } });
                   }
                   await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
-                  await tx.order.update({ where: { id: existing.id }, data: { customerName: name, customerAddress: od.customerAddress, notes: od.notes, total: total, deliveryFee: Number(od.deliveryFee) || 0, source: orderSource, status: "PENDING", items: { create: validItems } } });
+                  await tx.order.update({ where: { id: existing.id }, data: { customerName: name, customerAddress: od.customerAddress, notes: od.notes, total: total, deliveryFee: Number(od.deliveryFee) || 0, source: orderSource, status: "PENDING", items: { create: validItems }, updatedAt: new Date() } });
                 } else {
+                  console.log(`[WhatsApp Bot] Creating new order for ${senderPhone}`);
                   await tx.order.create({ data: { userId: user.id, customerName: name, customerPhone: pPhone, customerAddress: od.customerAddress, source: orderSource, status: "PENDING", total: total, deliveryFee: Number(od.deliveryFee) || 0, notes: od.notes, items: { create: validItems } } });
                 }
 
@@ -603,6 +653,9 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                   const recs = await tx.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
                   for (const r of recs) await tx.ingredient.update({ where: { id: r.ingredientId }, data: { stock: { decrement: Number(r.quantity) * vi.quantity } } });
                 }
+              }, {
+                isolationLevel: 'Serializable', // Ensure no race conditions on order creation
+                timeout: 10000
               });
               console.log(`[WhatsApp Bot] Order generated/updated successfully for ${senderPhone}`);
             } else {
@@ -615,7 +668,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           }
         }
         loops++;
-        // 4. Finally, clear the buffered messages we just processed
+        // Delete the messages from buffer after successful processing of the loop iteration
         await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
         await new Promise(r => setTimeout(r, 500));
       }
