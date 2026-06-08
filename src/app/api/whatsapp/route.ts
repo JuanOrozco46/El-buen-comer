@@ -376,22 +376,23 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
    - "Arroz Chino" + "Costilla" -> Usa productName: "Arroz con Costilla" (NO agregues "Costilla (Adición)")
    - "Arroz Chino" + "Chuleta" -> Usa productName: "Arroz con Chuleta" (NO agregues "Chuleta (Adición)")
    - Solo usa productos de la categoría "Adiciones" si el cliente pide explícitamente una "adición", "extra" o "porción adicional" de algo. Si el cliente pide un ingrediente que ya es parte del plato pero lo pide "aparte" (ej: "chicharrón aparte", "costilla aparte"), NO lo cobres como adición, ponlo como una nota en el producto.
-4. **RECOLECCIÓN DE DATOS (OBLIGATORIO - REGLA DE ORO)**: NO puedes usar el intent "order" NI confirmar el pedido hasta que tengas los datos siguientes:
-   a) Nombre del cliente.
-   b) Teléfono de contacto.
-   c) Dirección Completa y Barrio (IMPORTANTE: Si no identificas el barrio, PREGUNTA por él para calcular el valor del domicilio).
-   d) Método de pago (Efectivo o Transferencia).
-   e) COMPROBANTE: Si el método de pago es TRANSFERENCIA, ES OBLIGATORIO que el cliente envíe la imagen del comprobante ANTES de que uses el intent "order".
-   - Si falta CUALQUIERA, sigue preguntando de forma breve.
-   - Si es para Domicilio: Pide Nombre, Teléfono, Dirección, y método de pago.
-   - Si es Pasar a Recoger: Pide SOLO Nombre, Teléfono y método de pago. NO PIDAS DIRECCIÓN.
+4. **RECOLECCIÓN DE DATOS (OBLIGATORIO - FORMATO DE LISTA)**: NO puedes usar el intent "order" NI confirmar el pedido hasta que tengas: Nombre, Teléfono, Dirección Completa con Barrio, y Método de pago. (Nota: Para pedidos de "Recoger" no pidas dirección).
+   - SI FALTAN DATOS, debes pedirlos SIEMPRE usando un formato de LISTA (con guiones o viñetas) para facilitar la lectura. Ejemplo de cómo pedir los datos:
+   "¡Excelente elección! Para poder enviarte tu pedido, por favor facilítame estos datos:
+   - Nombre completo
+   - Número de teléfono
+   - Dirección exacta y barrio
+   - Método de pago (Efectivo o Transferencia)"
+   - NUNCA pidas los datos en un solo párrafo largo.
 4.1. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
 5. **CIERRE CON EFECTIVO**:
-    - Si es domicilio: Informa el [TOTAL] y el costo de domicilio. Agradece la compra y menciona que tienen 5 minutos para cambios antes de que pase a preparación. Varía la frase para que no parezca un mensaje automático.
-    - Si es recoger: Informa el [TOTAL]. Agradece la compra y menciona la regla de los 5 minutos para cambios. Varía la redacción.
-6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, informa el [TOTAL] y proporciona los datos de Nequi: 3173941189 o la llave @nequilui57354. Pide el comprobante para procesar el pedido. VARÍA las palabras pero da los datos de transferencia correctos.
-7. **VALIDACIÓN DE COMPROBANTES (IMÁGENES)**: Cuando el cliente envíe una captura de pantalla de transferencia, verifica: Valor, Destino y Fecha.
-    - Si es válida y el total coincide, DEBES usar el intent "order" (NUNCA uses "chat" para una confirmación) y confirma que recibiste el comprobante correctamente. Menciona que el pedido ha sido confirmado y la regla de los 5 minutos para cambios. VARÍA LA RESPUESTA de un cliente a otro.
+    - Si es domicilio: Informa el [TOTAL] y el costo de domicilio. Agradece la compra y menciona que tienen 5 minutos para cambios antes de que pase a preparación. VARÍA LA FRASE siempre para que no parezca un bot automático.
+    - Si es recoger: Informa el [TOTAL]. Agradece la compra y menciona la regla de los 5 minutos para cambios. Varía la redacción cada vez.
+6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, informa el [TOTAL] y proporciona los datos de Nequi: 3173941189.
+7. **VALIDACIÓN DE COMPROBANTES Y CONFIRMACIÓN**: Cuando envíen la captura de transferencia, verifica Valor, Destino y Fecha.
+    - Si es válida, DEBES usar el intent "order" y confirmar que recibiste el comprobante. Menciona que el pedido ha sido confirmado y la regla de los 5 minutos para cambios. 
+    - ⚠️ REGLA DE ORO ANTI-SPAM: NUNCA USES LA MISMA FRASE PARA CONFIRMAR UN PEDIDO. Usa estilos totalmente distintos (formal, informal, con muchos emojis, sin emojis, corto, largo) para evitar que WhatsApp bloquee la cuenta por spam.
+    - ⚠️ REGLA CRÍTICA DE SEGURIDAD ⚠️: ES IMPOSIBLE que hayas recibido un comprobante de pago si el mensaje reciente del usuario NO dice EXPLÍCITAMENTE "[Imagen adjunta de transferencia]" o "[Contenía multimedia]". NUNCA asumas que lo recibiste solo por texto. BAJO NINGUNA CIRCUNSTANCIA puedes decir "Comprobante recibido", "Pago confirmado" ni crear una orden si no ves esa etiqueta visual. Si piden Nequi, LIMITATE a dar el número y diles que QUEDAS A LA ESPERA DE LA IMAGEN.
 8. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó.
 9. **TIEMPOS DE ENTREGA**:
    - Domicilio: "Su pedido demorara 50-60 minutos aproximadamente."
@@ -512,6 +513,41 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             await new Promise(r => setTimeout(r, extraWait));
           }
 
+          // --- SAFEGUARDS: Check for images BEFORE sending messages ---
+          const recentHistoryHasImage = history.some((h: any) => h.text?.includes("[Imagen") || h.role === "user" && h.text?.includes("[Contenía multimedia]"));
+          const imagePresent = hasImageInBatch || recentHistoryHasImage;
+          const isTransfer = geminiResponse.orderData?.notes?.toLowerCase().includes("transfer") || 
+                           geminiResponse.orderData?.notes?.toLowerCase().includes("nequi") ||
+                           geminiResponse.replyText?.toLowerCase().includes("nequi") ||
+                           geminiResponse.replyText?.toLowerCase().includes("transferencia") ||
+                           geminiResponse.replyText?.toLowerCase().includes("comprobante");
+
+          const hallucinatedConfirmation = (
+                                            /comprobante.*(recibido|confirmado|aprobado|correcto)/i.test(geminiResponse.replyText || "") ||
+                                            /transferencia.*(recibida|confirmada|aprobada)/i.test(geminiResponse.replyText || "") ||
+                                            /pago.*recibido/i.test(geminiResponse.replyText || "") ||
+                                            /pedido.*(confirmado|listo para preparar)/i.test(geminiResponse.replyText || "")
+                                           ) && isTransfer && !imagePresent;
+
+          if ((geminiResponse.intent === "order" && isTransfer && !imagePresent) || hallucinatedConfirmation) {
+             console.error(`[WhatsApp Bot] BLOCKING order/hallucination for ${senderPhone}: No image found.`);
+             geminiResponse.intent = "chat";
+             
+             const variations = [
+               "¡Casi listo! Pero no veo el comprobante de pago. Porfa envíame la imagen de la transferencia para poder confirmar tu pedido. 😊",
+               "Olvidaste adjuntar el comprobante. Apenas mandes la fotico de la transferencia proceso tu orden de una. 👍",
+               "Me falta el soporte del pago para pasar el pedido a cocina. ¿Me lo compartes por acá mismo? 🙏",
+               "Lo siento, para pedidos con transferencia es obligatorio enviar el comprobante en imagen. ¡Quedo atento!",
+               "Hey, no me ha llegado la imagen de la transferencia. Recuerda enviarla para que el pedido pase a preparación. 🍳",
+               "¡Hola! No veo el comprobante. Por favor, asegúrate de adjuntar la imagen para confirmar el pedido. ✅"
+             ];
+             geminiResponse.replyText = variations[Math.floor(Math.random() * variations.length)];
+          } else if (geminiResponse.intent === "chat" && geminiResponse.replyText?.toLowerCase().includes("comprobante") && geminiResponse.orderData?.items?.length > 0 && imagePresent) {
+             // Bot was right to confirm, but used wrong intent
+             console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Correcting to 'order'.`);
+             geminiResponse.intent = "order";
+          }
+
           // --- TYPING INDICATOR: show "escribiendo..." before sending ---
           const textLength = geminiResponse.replyText?.length || 20;
           const typingDuration = Math.min(7000, Math.floor(Math.random() * 2000) + 1500 + (textLength * 25)); // Dynamic duration
@@ -544,46 +580,6 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
           const finalHistory = JSON.parse(JSON.stringify([...preliminaryHistory, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50)));
           await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistory } });
-
-          // --- INTENT SAFEGUARD: If bot confirmed in text but used 'chat' intent ---
-          // Also check history for recent image if not in current batch
-          const recentHistoryHasImage = history.some((h: any) => h.text?.includes("[Imagen") || h.role === "user" && h.text?.includes("[Contenía multimedia]"));
-          const imagePresent = hasImageInBatch || recentHistoryHasImage;
-
-          if (geminiResponse.intent === "chat" && geminiResponse.replyText?.includes("Comprobante recibido correctamente")) {
-            console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Correcting to 'order' because text confirmed receipt.`);
-            if (geminiResponse.orderData && geminiResponse.orderData.items?.length > 0 && imagePresent) {
-              geminiResponse.intent = "order";
-            } else if (!imagePresent) {
-              console.error(`[WhatsApp Bot] CRITICAL: Bot claims receipt but NO IMAGE was found for ${senderPhone}. Blocked auto-order.`);
-              geminiResponse.intent = "chat"; // Force back to chat
-            } else {
-              console.error(`[WhatsApp Bot] CRITICAL: Confirmation sent but orderData is missing for ${senderPhone}.`);
-              try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR BOT]\nSe confirmó recibo al cliente ${senderPhone} pero NO se generó orden en sistema.\nRevisar manual.`); } catch (e) { }
-            }
-          }
-
-          // Hard check: If payment is Transferencia/Nequi, we MUST have an image
-          const isTransfer = geminiResponse.orderData?.notes?.toLowerCase().includes("transfer") || 
-                           geminiResponse.orderData?.notes?.toLowerCase().includes("nequi") ||
-                           geminiResponse.replyText?.toLowerCase().includes("nequi") ||
-                           geminiResponse.replyText?.toLowerCase().includes("transferencia");
-          
-          if (geminiResponse.intent === "order" && isTransfer && !imagePresent) {
-             console.error(`[WhatsApp Bot] BLOCKING order for ${senderPhone}: Intent ORDER used for Transfer payment but NO IMAGE found.`);
-             geminiResponse.intent = "chat";
-             
-             const variations = [
-               "¡Casi listo! Pero no veo el comprobante de pago. Porfa envíame la imagen para poder confirmar tu pedido. 😊",
-               "Olvidaste adjuntar el comprobante. Apenas mandes la fotico de la transferencia proceso tu orden de una. 👍",
-               "Me falta el soporte del pago para pasar el pedido a cocina. ¿Me lo compartes por acá mismo? 🙏",
-               "Lo siento, para pedidos con transferencia es obligatorio enviar el comprobante. ¡Quedo atento a la imagen!",
-               "Hey, no me ha llegado la imagen de la transferencia. Recuerda enviarla para que el pedido entre a preparación lo antes posible. 🍳",
-               "¡Hola! No veo el comprobante en el chat. Por políticas del local, necesito la imagen para procesar el pedido. ¡Gracias!",
-               "¡Oops! Me falta el pantallazo de Nequi/Transferencia. En cuanto me lo pases te confirmo el pedido. ✅"
-             ];
-             geminiResponse.replyText = variations[Math.floor(Math.random() * variations.length)];
-          }
 
             if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
