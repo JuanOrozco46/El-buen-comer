@@ -25,6 +25,7 @@ const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
 // This prevents the bot from responding to multiple users at the exact same instant
 let lastGlobalReplyTime = 0;
 const MIN_INTER_USER_DELAY = 3000; // Minimum 3s between replies to different users
+const MIN_REPLY_DELAY = 15000; // Wait 15 seconds to group messages from the same user
 
 // Panic mode rate limiter: sliding window of reply timestamps
 // Prevents mass-sending rejection messages that could trigger WhatsApp spam detection
@@ -167,6 +168,10 @@ export async function POST(req: Request) {
     if (lockAcquired.count === 0) return NextResponse.json({ received: true });
 
     try {
+      // --- MESSAGE GROUPING: Wait before picking up buffer items ---
+      console.log(`[WhatsApp Bot] Buffering messages: waiting ${MIN_REPLY_DELAY}ms for ${senderPhone} to group messages...`);
+      await new Promise(r => setTimeout(r, MIN_REPLY_DELAY));
+
       let isFirstIteration = true;
       let loops = 0;
 
@@ -348,7 +353,26 @@ SIMULACIÓN HUMANA: Si tienes varias cosas que decir (ej: saludar y luego pregun
 
 DATO ADICIONAL (PRIVADO): El titular de la cuenta Nequi es Luis Pretelt. SóLO proporciona este nombre si el cliente lo pregunta explícitamente.
 
+INVENTARIO ACTUAL Y PRECIOS:
+${menuText}
 
+PRECIOS DE DOMICILIO POR BARRIO:
+- Rockefeller, Modelo, Maeugenia, Bellavista, Loma del Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio: $4.000
+- Cristal, Oriente, Transformadora, Galeón, Miraflores, Masamorra, San Luis, Kennedy, El 5: $5.000
+- Marina, R9, Laureles, Inmaculada, Ciudadela 1 y 2, Campin, Kilometro 5, Centro: $6.000
+- Ciudadela 3 y 4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Todo Isla, Cascajal: $7.000
+- Éxito, Triunfo, Nueva Grana, Brisas Del Mar: $8.000
+- Colinas C.: $9.000
+
+- Personal: Para 1 persona.
+- Duo: Para 2 personas.
+- Familiar: Para 4-5 personas.
+- Super familiar: Para 6-7 personas.
+CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
+ - Suma el precio de CADA producto según su tamaño + costo de domicilio.
+ - **BARRIO DESCONOCIDO**: Si el cliente menciona un barrio que NO ESTÁ en la lista superior, usa un costo de domicilio estándar de $6.000. NO digas "Ya te confirmamos cuanto es", simplemente procede con el pedido usando ese valor.
+ - **COSTO MANUAL (IMPORTANTE)**: Revisa el historial de mensajes. Si ves que un humano (model) envió un mensaje que es simplemente un número (ej: "5500") después de que preguntaras por un barrio desconocido, interpreta ese número como el 'deliveryFee' para ese pedido y procede.
+ - El TOTAL final que menciones debe ser la suma EXACTA de (Productos + Domicilio). Si es recoger, el total es solo el de los productos ($0 domicilio).
 
 1. **BREVEDAD ABSOLUTA (HUMANO REAL)**: Prioriza respuestas de 1 a 3 PALABRAS. Si puedes responder con una sola palabra (Ej: "Listo", "Ok", "Dale", "Perfecto", "Bueno"), HAZLO. NUNCA uses cortesía, agradecimientos largos ni frases de relleno. 
    - ⚠️ SEGURIDAD: Varía siempre esa palabra única entre un cliente y otro para evitar bloqueos por spam.
@@ -371,10 +395,15 @@ DATO ADICIONAL (PRIVADO): El titular de la cuenta Nequi es Luis Pretelt. SóLO p
    - Dirección/Barrio
    - Pago
 6. **TRANSFERENCIA**: Da el Nequi 3173941189 o la llave @NEQUILUI57354. Pide la imagen ANTES DE GENERAR LA ORDEN.
-7. **CONFIRMACIÓN**: Solo con imagen (intent "order"). Tiempo de entrega: Domicilio 50-60 min / Recoger 20-30 min.
-8. **ANTI-HALLUCINATION**: Sin etiqueta "[Imagen...]", NO confirmes nada.
-9. **AUDIOS**: Indica que solo texto, breve.
-10. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
+7. **VALIDACIÓN DE COMPROBANTE (OBLIGATORIO)**: Cuando envíen la imagen, DEBES verificar visualmente en la captura:
+   - **NÚMERO DE DESTINO**: Debe ser obligatoriamente el **3173941189**.
+   - **FECHA**: Debe ser la fecha de HOY (${currentDate}).
+   - **MONTO**: Debe coincidir con el total del pedido.
+   - Si el número de destino es diferente o la fecha es vieja, RECHAZA el pago educadamente y pide el correcto.
+8. **CONFIRMACIÓN FINAL**: Solo si el comprobante es válido (intent "order"), confirma brevemente y da el tiempo de entrega (50-60 min domi / 20-30 min recoger).
+9. **ANTI-HALLUCINATION**: Si no hay etiqueta "[Imagen...]", NO confirmes nada.
+10. **AUDIOS**: Indica que solo texto, breve.
+11. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
