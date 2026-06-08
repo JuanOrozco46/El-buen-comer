@@ -387,7 +387,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
    - $4.000: Rockefeller, Modelo, Maeugenia, Bellavista, Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio.
    - $5.000: Cristal, Oriente, Transformadora, Galeón, Miraflores, Masamorra, San Luis, Kennedy, El 5.
    - $6.000: Marina, R9, Laureles, Inmaculada, Ciudadela 1/2, Campin, Km 5, Centro, o BARRIO DESCONOCIDO.
-   - $7.000: Ciudadela 3/4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Isla, Cascajal.
+   - $7.000: Ciudadela 3/4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Isla, Cascajal, La ciudadela.
    - $8.000: Éxito, Triunfo, Nueva Grana, Brisas.
    - $9.000: Colinas C.
 5. **RECOLECCIÓN (LISTA CORTA)**: Pide solo lo que falte:
