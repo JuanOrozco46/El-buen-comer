@@ -224,7 +224,11 @@ export async function POST(req: Request) {
 
         // Fresh Data fetched above already filters for isActive and isSoldOut
 
-        const menuText = products.map((p) => `- ${p.name} (${p.category}):\n` + p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')).join('\n\n');
+        const menuText = products.map((p) => 
+          `- ${p.name} (${p.category}):\n` + 
+          (p.description ? `  Descripción: ${p.description}\n` : "") +
+          p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')
+        ).join('\n\n');
 
         const currentChat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
         let history: any[] = (currentChat?.history as any[]) || [];
