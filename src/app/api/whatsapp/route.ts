@@ -25,7 +25,7 @@ const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
 // This prevents the bot from responding to multiple users at the exact same instant
 let lastGlobalReplyTime = 0;
 const MIN_INTER_USER_DELAY = 3000; // Minimum 3s between replies to different users
-const MIN_REPLY_DELAY = 15000; // Wait 15 seconds to group messages from the same user
+const MIN_REPLY_DELAY = 10000; // Wait 10 seconds to group messages from the same user
 
 // Panic mode rate limiter: sliding window of reply timestamps
 // Prevents mass-sending rejection messages that could trigger WhatsApp spam detection
@@ -429,11 +429,19 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           messageParts.push({ inlineData: { mimeType: m.mime, data: m.base64 } });
         }
 
-        const preliminaryHistory = JSON.parse(JSON.stringify([...history, { role: "user", text: (aggregatedText || "") + (aggregatedMedia.length > 0 ? " [Contenía multimedia]" : "") }]));
-        await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: preliminaryHistory.slice(-50) } });
+        // Create the extended history for Gemini but DO NOT save to DB yet to avoid duplicates if we regroup
+        const currentBatchUserText = (aggregatedText || "") + (aggregatedMedia.length > 0 ? " [Contenía multimedia]" : "");
+        const preliminaryHistoryWithCurrentUserMessage = JSON.parse(JSON.stringify([...history, { role: "user", text: currentBatchUserText }]));
+
+        // Check for new messages just before calling Gemini
+        const preGeminiBuffer = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone } });
+        if (preGeminiBuffer.some((b: any) => !itemIds.includes(b.id))) {
+          console.log(`[WhatsApp Bot] New messages arrived just before Gemini call for ${senderPhone}. Regrouping...`);
+          continue;
+        }
 
         // Ensure history starts with a 'user' message and is very compact (last 6-8 turns max)
-        let safeHistory = preliminaryHistory.slice(-10).map((h: any) => ({ role: h.role, parts: [{ text: h.text }] }));
+        let safeHistory = preliminaryHistoryWithCurrentUserMessage.slice(-10).map((h: any) => ({ role: h.role, parts: [{ text: h.text }] }));
         while (safeHistory.length > 0 && safeHistory[0].role !== "user") {
           safeHistory.shift();
         }
@@ -473,6 +481,13 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             }
           }
           if (!geminiResponse) console.warn(`[WhatsApp Bot] Model ${modelName} exhausted all retries. Moving to next fallback if any.`);
+        }
+
+        // Check for new messages just before sending (Gemini takes time)
+        const postGeminiBuffer = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone } });
+        if (postGeminiBuffer.some((b: any) => !itemIds.includes(b.id))) {
+          console.log(`[WhatsApp Bot] New messages arrived during Gemini call for ${senderPhone}. Regrouping...`);
+          continue;
         }
 
         if (geminiResponse?.replyText) {
@@ -558,6 +573,13 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           await sendTypingIndicator(remoteJid, typingDuration);
           await new Promise(r => setTimeout(r, typingDuration)); // Wait for typing to show
 
+          // One last check before we start sending the first chunk
+          const preSendBuffer = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone } });
+          if (preSendBuffer.some((b: any) => !itemIds.includes(b.id))) {
+            console.log(`[WhatsApp Bot] New messages arrived while typing for ${senderPhone}. Interrupting...`);
+            continue;
+          }
+
           if (geminiResponse.intent === "send_menu") {
             await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
           }
@@ -575,6 +597,13 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                 console.log(`[WhatsApp Bot] Fragmentation delay: waiting ${chunkDelay}ms before next chunk for ${senderPhone}`);
                 await new Promise(r => setTimeout(r, chunkDelay));
                 await sendTypingIndicator(remoteJid, chunkDelay + 800); // Keep typing indicator alive
+
+                // Check if user replied while we were sending chunks
+                const intraChunkBuffer = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone } });
+                if (intraChunkBuffer.some((b: any) => !itemIds.includes(b.id))) {
+                  console.log(`[WhatsApp Bot] User replied between chunks for ${senderPhone}. Stopping current response to regroup.`);
+                  break; // Stop sending chunks, loop will pick up new message
+                }
               }
             }
           }
@@ -582,8 +611,10 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           // Update global reply timestamp
           lastGlobalReplyTime = Date.now();
 
-          const finalHistory = JSON.parse(JSON.stringify([...preliminaryHistory, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50)));
-          await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistory } });
+          // --- FINAL HISTORY COMMIT ---
+          // Now that we actually sent the message and didn't abort/regroup, we save the full exchange
+          const finalHistoryToSave = JSON.parse(JSON.stringify([...preliminaryHistoryWithCurrentUserMessage, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50)));
+          await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistoryToSave, updatedAt: new Date() } });
 
           if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
