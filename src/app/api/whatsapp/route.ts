@@ -145,11 +145,11 @@ export async function POST(req: Request) {
 
     // 0. Buffer message
     await (prisma as any).whatsAppMessageBuffer.create({
-      data: { 
-        phone: senderPhone, 
-        content: messageText || null, 
-        mimeType: mediaItem?.mime || null, 
-        base64: mediaItem?.base64 || null 
+      data: {
+        phone: senderPhone,
+        content: messageText || null,
+        mimeType: mediaItem?.mime || null,
+        base64: mediaItem?.base64 || null
       }
     });
 
@@ -224,8 +224,8 @@ export async function POST(req: Request) {
 
         // Fresh Data fetched above already filters for isActive and isSoldOut
 
-        const menuText = products.map((p) => 
-          `- ${p.name} (${p.category}):\n` + 
+        const menuText = products.map((p) =>
+          `- ${p.name} (${p.category}):\n` +
           (p.description ? `  Descripción: ${p.description}\n` : "") +
           p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')
         ).join('\n\n');
@@ -278,18 +278,18 @@ export async function POST(req: Request) {
         const hours = parseInt(hStr || "0", 10);
         const minutes = parseInt(mStr || "0", 10);
         const timeValue = hours + minutes / 60;
-        const currentDate = new Date().toLocaleString("es-CO", { 
+        const currentDate = new Date().toLocaleString("es-CO", {
           timeZone: "America/Bogota",
-          weekday: "long", 
-          year: "numeric", 
-          month: "long", 
+          weekday: "long",
+          year: "numeric",
+          month: "long",
           day: "numeric"
         }) + " a las " + new Date().toLocaleTimeString("es-CO", {
           timeZone: "America/Bogota",
           hour: "2-digit",
           minute: "2-digit",
           hour12: true
-        }); 
+        });
         console.log(`[WhatsApp Bot] Time Check for ${senderPhone}: ${hStr}:${mStr} (Value: ${timeValue})`);
 
         let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos normalmente de 10:00 AM a 6:30 PM. Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
@@ -348,62 +348,33 @@ SIMULACIÓN HUMANA: Si tienes varias cosas que decir (ej: saludar y luego pregun
 
 DATO ADICIONAL (PRIVADO): El titular de la cuenta Nequi es Luis Pretelt. SóLO proporciona este nombre si el cliente lo pregunta explícitamente.
 
-INVENTARIO ACTUAL Y PRECIOS:
-${menuText}
 
-PRECIOS DE DOMICILIO POR BARRIO:
-- Rockefeller, Modelo, Maeugenia, Bellavista, Loma del Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio: $4.000
-- Cristal, Oriente, Transformadora, Galeón, Miraflores, Masamorra, San Luis, Kennedy, El 5: $5.000
-- Marina, R9, Laureles, Inmaculada, Ciudadela 1 y 2, Campin, Kilometro 5, Centro: $6.000
-- Ciudadela 3 y 4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Todo Isla, Cascajal: $7.000
-- Éxito, Triunfo, Nueva Grana, Brisas Del Mar: $8.000
-- Colinas C.: $9.000
 
-- Personal: Para 1 persona.
-- Duo: Para 2 personas.
-- Familiar: Para 4-5 personas.
-- Super familiar: Para 6-7 personas.
- 
-CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
- - Suma el precio de CADA producto según su tamaño + costo de domicilio.
- - **BARRIO DESCONOCIDO**: Si el cliente menciona un barrio que NO ESTÁ en la lista superior, usa un costo de domicilio estándar de $6.000. NO digas "Ya te confirmamos cuanto es", simplemente procede con el pedido usando ese valor.
- - **COSTO MANUAL (IMPORTANTE)**: Revisa el historial de mensajes. Si ves que un humano (model) envió un mensaje que es simplemente un número (ej: "5500") después de que preguntaras por un barrio desconocido, interpreta ese número como el 'deliveryFee' para ese pedido y procede.
- - El TOTAL final que menciones debe ser la suma EXACTA de (Productos + Domicilio). Si es recoger, el total es solo el de los productos ($0 domicilio).
- - NO inventes precios. Si un producto no está en la lista, díselo al cliente.
-
-1. **SALUDO E INFORMACIÓN**: Si el cliente dice hola o interactúa por primera vez (historial completamente vacío), DEBES usar el intent "send_menu" y responder saludando de forma natural (ej: "¡Hola! Bienvenido al Buen Comer, ¿qué te gustaría pedir?") y ofreciendo el menú. VARÍA EL SALUDO SIEMPRE. Si ya hay historial, no saludes de nuevo. Si el usuario pide la "Tabla", se refiere al "Menú", en cuyo caso también debes usar el intent "send_menu".
-2. **BREVEDAD (REGLA CRÍTICA)**: Tus respuestas deben ser EXTREMADAMENTE CORTAS. Máximo 1-2 líneas. NUNCA uses frases de cortesía como "¡Claro!", "¡Con gusto!".
-3. **TAMAÑOS**: Si el cliente pide un arroz pero no especifica el tamaño, pregúntale: "¿De qué tamaño sería?".
-3.1. **ARROZ CHINO (OBLIGATORIO)**: Si el cliente pide "Arroz Chino", DEBES preguntar si lo desea con Costilla, Chuleta o Tradicional (Solo).
-3.2. **MAPEO DE PRODUCTOS (IMPORTANTE)**: Para evitar cobros adicionales incorrectos, usa los siguientes nombres de producto exactos (aplica para TODOS los tamaños):
-   - "Arroz Chino" + "Tradicional" o "Solo" -> Usa productName: "Arroz Chino"
-   - "Arroz Chino" + "Costilla" -> Usa productName: "Arroz con Costilla" (NO agregues "Costilla (Adición)")
-   - "Arroz Chino" + "Chuleta" -> Usa productName: "Arroz con Chuleta" (NO agregues "Chuleta (Adición)")
-   - Solo usa productos de la categoría "Adiciones" si el cliente pide explícitamente una "adición", "extra" o "porción adicional" de algo. Si el cliente pide un ingrediente que ya es parte del plato pero lo pide "aparte" (ej: "chicharrón aparte", "costilla aparte"), NO lo cobres como adición, ponlo como una nota en el producto.
-4. **RECOLECCIÓN DE DATOS (OBLIGATORIO - FORMATO DE LISTA)**: NO puedes usar el intent "order" NI confirmar el pedido hasta que tengas: Nombre, Teléfono, Dirección Completa con Barrio, y Método de pago. (Nota: Para pedidos de "Recoger" no pidas dirección).
-   - SI FALTAN DATOS, debes pedirlos SIEMPRE usando un formato de LISTA (con guiones o viñetas) para facilitar la lectura. Ejemplo de cómo pedir los datos:
-   "¡Excelente elección! Para poder enviarte tu pedido, por favor facilítame estos datos:
-   - Nombre completo
-   - Número de teléfono
-   - Dirección exacta y barrio
-   - Método de pago (Efectivo o Transferencia)"
-   - NUNCA pidas los datos en un solo párrafo largo.
-4.1. **PAGOS MIXTOS / DIVIDIDOS**: Si el cliente divide el pago (ej. una parte en efectivo y otra por Nequi), ACEPTA la orden sin problema y regístralo claramente en las 'notes' del JSON de la orden (ej: "Pago dividido: 40 Efectivo, 32 Nequi").
-5. **CIERRE CON EFECTIVO**:
-    - Si es domicilio: Informa el [TOTAL] y el costo de domicilio. Agradece la compra y menciona que tienen 5 minutos para cambios antes de que pase a preparación. VARÍA LA FRASE siempre para que no parezca un bot automático.
-    - Si es recoger: Informa el [TOTAL]. Agradece la compra y menciona la regla de los 5 minutos para cambios. Varía la redacción cada vez.
-6. **PAGO CON TRANSFERENCIA**: Si el cliente indica que pagará por transferencia, informa el [TOTAL] y proporciona los datos de Nequi: 3173941189.
-7. **VALIDACIÓN DE COMPROBANTES Y CONFIRMACIÓN**: Cuando envíen la captura de transferencia, verifica Valor, Destino y Fecha.
-    - Si es válida, DEBES usar el intent "order" y confirmar que recibiste el comprobante. Menciona que el pedido ha sido confirmado y la regla de los 5 minutos para cambios. 
-    - ⚠️ REGLA DE ORO ANTI-SPAM: NUNCA USES LA MISMA FRASE PARA CONFIRMAR UN PEDIDO. Usa estilos totalmente distintos (formal, informal, con muchos emojis, sin emojis, corto, largo) para evitar que WhatsApp bloquee la cuenta por spam.
-    - ⚠️ REGLA CRÍTICA DE SEGURIDAD ⚠️: ES IMPOSIBLE que hayas recibido un comprobante de pago si el mensaje reciente del usuario NO dice EXPLÍCITAMENTE "[Imagen adjunta de transferencia]" o "[Contenía multimedia]". NUNCA asumas que lo recibiste solo por texto. BAJO NINGUNA CIRCUNSTANCIA puedes decir "Comprobante recibido", "Pago confirmado" ni crear una orden si no ves esa etiqueta visual. Si piden Nequi, LIMITATE a dar el número y diles que QUEDAS A LA ESPERA DE LA IMAGEN.
-8. **MEMORIA Y CONTEXTO**: NO vuelvas a preguntar el nombre, dirección o teléfono si el usuario ya lo mencionó.
-9. **TIEMPOS DE ENTREGA**:
-   - Domicilio: "Su pedido demorara 50-60 minutos aproximadamente."
-   - Recoger: "Puedes pasar en unos 20-30 minutos aproximadamente."
-10. **NOTAS POR PLATO**: Pon indicaciones en la propiedad "notes" del item.
-11. **NOTAS DE VOZ**: Si recibes el texto "El usuario mandó un audio.", informa amablemente que por políticas no se toman pedidos por notas de voz, solo por texto. VARÍA la respuesta.
-12. **CAMBIOS EN EL PEDIDO**: Informa al cliente que solo tiene 5 minutos para realizar cambios después de la confirmación. Si el cliente intenta cambiar algo después de 5 minutos, dile de forma variada y amable que el pedido ya entró a preparación.
+1. **BREVEDAD ABSOLUTA (HUMANO REAL)**: Prioriza respuestas de 1 a 3 PALABRAS. Si puedes responder con una sola palabra (Ej: "Listo", "Ok", "Dale", "Perfecto", "Bueno"), HAZLO. NUNCA uses cortesía, agradecimientos largos ni frases de relleno. 
+   - ⚠️ SEGURIDAD: Varía siempre esa palabra única entre un cliente y otro para evitar bloqueos por spam.
+2. **AISLAMIENTO DE PEDIDO**: Si el bot confirmó orden (intent "order"), ignora platos anteriores. Nuevo mensaje = Pedido Nuevo.
+3. **INVENTARIO Y PRECIOS**: ${menuText}
+3.1. **MAPEO ARROZ CHINO**: 
+   - Chino + Tradicional/Solo -> "Arroz Chino"
+   - Chino + Costilla -> "Arroz con Costilla"
+   - Chino + Chuleta -> "Arroz con Chuleta"
+3.2. **TAMAÑOS**: Si no dicen tamaño, pregunta "¿De qué tamaño?".
+4. **DOMICILIOS**: 
+   - $4.000: Rockefeller, Modelo, Maeugenia, Bellavista, Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio.
+   - $5.000: Cristal, Oriente, Transformadora, Galeón, Miraflores, Masamorra, San Luis, Kennedy, El 5.
+   - $6.000: Marina, R9, Laureles, Inmaculada, Ciudadela 1/2, Campin, Km 5, Centro, o BARRIO DESCONOCIDO.
+   - $7.000: Ciudadela 3/4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Isla, Cascajal.
+   - $8.000: Éxito, Triunfo, Nueva Grana, Brisas.
+   - $9.000: Colinas C.
+5. **RECOLECCIÓN (LISTA CORTA)**: Pide solo lo que falte:
+   - Nombre
+   - Dirección/Barrio
+   - Pago
+6. **TRANSFERENCIA**: Da el Nequi 3173941189 o la llave @NEQUILUI57354. Pide la imagen ANTES DE GENERAR LA ORDEN.
+7. **CONFIRMACIÓN**: Solo con imagen (intent "order"). Tiempo de entrega: Domicilio 50-60 min / Recoger 20-30 min.
+8. **ANTI-HALLUCINATION**: Sin etiqueta "[Imagen...]", NO confirmes nada.
+9. **AUDIOS**: Indica que solo texto, breve.
+10. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
@@ -432,8 +403,8 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         const preliminaryHistory = JSON.parse(JSON.stringify([...history, { role: "user", text: (aggregatedText || "") + (aggregatedMedia.length > 0 ? " [Contenía multimedia]" : "") }]));
         await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: preliminaryHistory.slice(-50) } });
 
-        // Ensure history starts with a 'user' message for Gemini
-        let safeHistory = preliminaryHistory.slice(0, -1).map((h: any) => ({ role: h.role, parts: [{ text: h.text }] }));
+        // Ensure history starts with a 'user' message and is very compact (last 6-8 turns max)
+        let safeHistory = preliminaryHistory.slice(-10).map((h: any) => ({ role: h.role, parts: [{ text: h.text }] }));
         while (safeHistory.length > 0 && safeHistory[0].role !== "user") {
           safeHistory.shift();
         }
@@ -479,7 +450,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           // --- PANIC MODE RATE LIMIT: skip reply if too many rejections sent recently ---
           if (globalSettings?.isPanicModeActive) {
             const now = Date.now();
-            
+
             // Global limit
             panicModeReplyTimestamps = panicModeReplyTimestamps.filter(t => now - t < 60000);
             if (panicModeReplyTimestamps.length >= PANIC_MAX_REPLIES_PER_MINUTE) {
@@ -497,11 +468,11 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
               break;
             }
-            
+
             userRef.count = 1;
             userRef.lastTime = now;
             userPanicReplies[senderPhone] = userRef;
-            
+
             panicModeReplyTimestamps.push(now);
           } else {
             // Reset panic count if NOT in panic mode (so we can reply again next time panic is ON)
@@ -520,36 +491,36 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           // --- SAFEGUARDS: Check for images BEFORE sending messages ---
           const recentHistoryHasImage = history.some((h: any) => h.text?.includes("[Imagen") || h.role === "user" && h.text?.includes("[Contenía multimedia]"));
           const imagePresent = hasImageInBatch || recentHistoryHasImage;
-          const isTransfer = geminiResponse.orderData?.notes?.toLowerCase().includes("transfer") || 
-                           geminiResponse.orderData?.notes?.toLowerCase().includes("nequi") ||
-                           geminiResponse.replyText?.toLowerCase().includes("nequi") ||
-                           geminiResponse.replyText?.toLowerCase().includes("transferencia") ||
-                           geminiResponse.replyText?.toLowerCase().includes("comprobante");
+          const isTransfer = geminiResponse.orderData?.notes?.toLowerCase().includes("transfer") ||
+            geminiResponse.orderData?.notes?.toLowerCase().includes("nequi") ||
+            geminiResponse.replyText?.toLowerCase().includes("nequi") ||
+            geminiResponse.replyText?.toLowerCase().includes("transferencia") ||
+            geminiResponse.replyText?.toLowerCase().includes("comprobante");
 
           const hallucinatedConfirmation = (
-                                            /comprobante.*(recibido|confirmado|aprobado|correcto)/i.test(geminiResponse.replyText || "") ||
-                                            /transferencia.*(recibida|confirmada|aprobada)/i.test(geminiResponse.replyText || "") ||
-                                            /pago.*recibido/i.test(geminiResponse.replyText || "") ||
-                                            /pedido.*(confirmado|listo para preparar)/i.test(geminiResponse.replyText || "")
-                                           ) && isTransfer && !imagePresent;
+            /comprobante.*(recibido|confirmado|aprobado|correcto)/i.test(geminiResponse.replyText || "") ||
+            /transferencia.*(recibida|confirmada|aprobada)/i.test(geminiResponse.replyText || "") ||
+            /pago.*recibido/i.test(geminiResponse.replyText || "") ||
+            /pedido.*(confirmado|listo para preparar)/i.test(geminiResponse.replyText || "")
+          ) && isTransfer && !imagePresent;
 
           if ((geminiResponse.intent === "order" && isTransfer && !imagePresent) || hallucinatedConfirmation) {
-             console.error(`[WhatsApp Bot] BLOCKING order/hallucination for ${senderPhone}: No image found.`);
-             geminiResponse.intent = "chat";
-             
-             const variations = [
-               "¡Casi listo! Pero no veo el comprobante de pago. Porfa envíame la imagen de la transferencia para poder confirmar tu pedido. 😊",
-               "Olvidaste adjuntar el comprobante. Apenas mandes la fotico de la transferencia proceso tu orden de una. 👍",
-               "Me falta el soporte del pago para pasar el pedido a cocina. ¿Me lo compartes por acá mismo? 🙏",
-               "Lo siento, para pedidos con transferencia es obligatorio enviar el comprobante en imagen. ¡Quedo atento!",
-               "Hey, no me ha llegado la imagen de la transferencia. Recuerda enviarla para que el pedido pase a preparación. 🍳",
-               "¡Hola! No veo el comprobante. Por favor, asegúrate de adjuntar la imagen para confirmar el pedido. ✅"
-             ];
-             geminiResponse.replyText = variations[Math.floor(Math.random() * variations.length)];
+            console.error(`[WhatsApp Bot] BLOCKING order/hallucination for ${senderPhone}: No image found.`);
+            geminiResponse.intent = "chat";
+
+            const variations = [
+              "¡Casi listo! Pero no veo el comprobante de pago. Porfa envíame la imagen de la transferencia para poder confirmar tu pedido. 😊",
+              "Olvidaste adjuntar el comprobante. Apenas mandes la fotico de la transferencia proceso tu orden de una. 👍",
+              "Me falta el soporte del pago para pasar el pedido a cocina. ¿Me lo compartes por acá mismo? 🙏",
+              "Lo siento, para pedidos con transferencia es obligatorio enviar el comprobante en imagen. ¡Quedo atento!",
+              "Hey, no me ha llegado la imagen de la transferencia. Recuerda enviarla para que el pedido pase a preparación. 🍳",
+              "¡Hola! No veo el comprobante. Por favor, asegúrate de adjuntar la imagen para confirmar el pedido. ✅"
+            ];
+            geminiResponse.replyText = variations[Math.floor(Math.random() * variations.length)];
           } else if (geminiResponse.intent === "chat" && geminiResponse.replyText?.toLowerCase().includes("comprobante") && geminiResponse.orderData?.items?.length > 0 && imagePresent) {
-             // Bot was right to confirm, but used wrong intent
-             console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Correcting to 'order'.`);
-             geminiResponse.intent = "order";
+            // Bot was right to confirm, but used wrong intent
+            console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Correcting to 'order'.`);
+            geminiResponse.intent = "order";
           }
 
           // --- TYPING INDICATOR: show "escribiendo..." before sending ---
@@ -585,7 +556,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           const finalHistory = JSON.parse(JSON.stringify([...preliminaryHistory, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50)));
           await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistory } });
 
-            if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
+          if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
             const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
             // Try to use the active waiter logged into the POS, but ONLY if they have the WAITER role
@@ -615,13 +586,13 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               if (p && p.sizes && p.sizes.length > 0) {
                 const inputSizeName = normalizeString(i.sizeName || "");
                 const s = p.sizes.find(z => normalizeString(z.name) === inputSizeName) || p.sizes[0];
-                
-                validItems.push({ 
-                  productId: p.id, 
-                  sizeName: s.name || "Personal", 
-                  quantity: Math.max(1, Number(i.quantity) || 1), 
-                  price: Number(s.price) || 0, 
-                  notes: i.notes || null 
+
+                validItems.push({
+                  productId: p.id,
+                  sizeName: s.name || "Personal",
+                  quantity: Math.max(1, Number(i.quantity) || 1),
+                  price: Number(s.price) || 0,
+                  notes: i.notes || null
                 });
                 total += (Number(s.price) || 0) * (Math.max(1, Number(i.quantity) || 1));
               } else {
@@ -633,8 +604,8 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               // FOR WHATSAPP: The absolute identifier for the chat is the sender's phone.
               // We must NOT allow Gemini to overwrite this for lookup purposes, or another
               // user mentioning the same contact phone could hijack this order.
-              const lookupPhone = senderPhone; 
-              
+              const lookupPhone = senderPhone;
+
               // If Gemini provided a DIFFERENT contact phone, we preserve it in notes but NOT as the primary key.
               let additionalNotes = od.notes || "";
               if (od.customerPhone && normalizarNumero(od.customerPhone) !== senderPhone) {
@@ -647,12 +618,12 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               let finalOrderId: number | null = null;
               await prisma.$transaction(async (tx) => {
                 const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
-                const existing = await tx.order.findFirst({ 
-                  where: { 
-                    customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50), 
-                    status: { in: ["PENDING", "PREPARING"] }, 
-                    createdAt: { gte: SIX_HOURS_AGO } 
-                  }, 
+                const existing = await tx.order.findFirst({
+                  where: {
+                    customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
+                    status: { in: ["PENDING", "PREPARING"] },
+                    createdAt: { gte: SIX_HOURS_AGO }
+                  },
                   include: { items: true },
                   orderBy: { createdAt: 'desc' }
                 });
@@ -669,36 +640,36 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                   // Note: Re-stocking of old items is handled outside or per-item if needed.
                   // For simplicity in WhatsApp, we replace all items.
                   await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
-                  const updated = await tx.order.update({ 
-                    where: { id: existing.id }, 
-                    data: { 
-                      customerName: finalName, 
-                      customerAddress: finalAddress, 
-                      notes: finalNotes, 
-                      total: Number(total) || 0, 
-                      deliveryFee: Number(od.deliveryFee) || 0, 
-                      source: orderSource, 
-                      status: "PENDING", 
-                      items: { create: validItems }, 
-                      updatedAt: new Date() 
-                    } 
+                  const updated = await tx.order.update({
+                    where: { id: existing.id },
+                    data: {
+                      customerName: finalName,
+                      customerAddress: finalAddress,
+                      notes: finalNotes,
+                      total: Number(total) || 0,
+                      deliveryFee: Number(od.deliveryFee) || 0,
+                      source: orderSource,
+                      status: "PENDING",
+                      items: { create: validItems },
+                      updatedAt: new Date()
+                    }
                   });
                   finalOrderId = updated.id;
                 } else {
                   console.log(`[WhatsApp Bot] Creating new order for ${senderPhone}`);
-                  const created = await tx.order.create({ 
-                    data: { 
-                      userId: userIdValue, 
-                      customerName: finalName, 
-                      customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50), 
-                      customerAddress: finalAddress, 
-                      source: orderSource, 
-                      status: "PENDING", 
-                      total: Number(total) || 0, 
-                      deliveryFee: Number(od.deliveryFee) || 0, 
-                      notes: finalNotes, 
-                      items: { create: validItems } 
-                    } 
+                  const created = await tx.order.create({
+                    data: {
+                      userId: userIdValue,
+                      customerName: finalName,
+                      customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
+                      customerAddress: finalAddress,
+                      source: orderSource,
+                      status: "PENDING",
+                      total: Number(total) || 0,
+                      deliveryFee: Number(od.deliveryFee) || 0,
+                      notes: finalNotes,
+                      items: { create: validItems }
+                    }
                   });
                   finalOrderId = created.id;
                 }
@@ -714,9 +685,9 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                     const recs = await prisma.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
                     for (const r of recs) {
                       if (r.ingredientId) {
-                        await prisma.ingredient.update({ 
-                          where: { id: r.ingredientId }, 
-                          data: { stock: { decrement: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0) } } 
+                        await prisma.ingredient.update({
+                          where: { id: r.ingredientId },
+                          data: { stock: { decrement: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0) } }
                         });
                       }
                     }
