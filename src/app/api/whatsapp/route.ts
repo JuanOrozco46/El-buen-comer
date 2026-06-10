@@ -25,7 +25,7 @@ const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
 // This prevents the bot from responding to multiple users at the exact same instant
 let lastGlobalReplyTime = 0;
 const MIN_INTER_USER_DELAY = 3000; // Minimum 3s between replies to different users
-const MIN_REPLY_DELAY = 15000; // Wait 15 seconds to group messages from the same user
+const MIN_REPLY_DELAY = 8500; // Wait 8.5 seconds to group messages from the same user (anti-spam protection)
 
 // Panic mode rate limiter: sliding window of reply timestamps
 // Prevents mass-sending rejection messages that could trigger WhatsApp spam detection
@@ -144,15 +144,28 @@ export async function POST(req: Request) {
     }
 
 
-    // 0. Buffer message
-    await (prisma as any).whatsAppMessageBuffer.create({
-      data: {
+    // 0. Buffer message (Anti-Duplication for Webhook retries)
+    const thirtySecondsAgo = new Date(Date.now() - 30000);
+    const existingBuffer = await (prisma as any).whatsAppMessageBuffer.findFirst({
+      where: {
         phone: senderPhone,
         content: messageText || null,
-        mimeType: mediaItem?.mime || null,
-        base64: mediaItem?.base64 || null
+        createdAt: { gte: thirtySecondsAgo }
       }
     });
+
+    if (!existingBuffer) {
+      await (prisma as any).whatsAppMessageBuffer.create({
+        data: {
+          phone: senderPhone,
+          content: messageText || null,
+          mimeType: mediaItem?.mime || null,
+          base64: mediaItem?.base64 || null
+        }
+      });
+    } else {
+      console.log(`[WhatsApp Bot] Ignorado mensaje repetido en el buffer para ${senderPhone} (Previniendo reintentos del webhook)`);
+    }
 
     // 1. Lock check
     let chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
@@ -349,7 +362,7 @@ Estilo con sugerencia de hora:
 
 REGLA DE ORO ANTI-SPAM: PARA EVITAR RESTRICCIONES DE WHATSAPP, NUNCA RESPONDAS EXACTAMENTE IGUAL A DOS CLIENTES. VARÍA SIEMPRE LA ESTRUCTURA, EL TONO, LAS PALABRAS Y EL USO DE EMOJIS. USA LOS GUIONES SIGUIENTES SÓLO COMO BASE DE INFORMACIÓN, NO COMO TEXTO LITERAL OBLIGATORIO (A MENOS QUE SE INDIQUE LO CONTRARIO).
 
-EQUILIBRIO HUMANO Y BREVEDAD: Compórtate como un humano amable al explicar el menú o resolver dudas. SIN EMBARGO, ten en cuenta que el cliente se molesta MUCHO si envías mensajes largos al tomar el pedido. NUNCA resumas el pedido de forma extensa ni repitas detalles ya dichos. Responde máximo con 1 frase o 2. No uses doble salto de línea (\n\n).
+EQUILIBRIO HUMANO Y BREVEDAD: Compórtate como un humano amable al explicar el menú o resolver dudas. SIN EMBARGO, ten en cuenta que el cliente se molesta MUCHO si envías mensajes largos al tomar el pedido. NUNCA resumas el pedido de forma extensa ni repitas detalles ya dichos. Responde máximo con 1 frase o 2. Puedes usar doble salto de línea (\n\n) si es necesario o para darle naturalidad a la conversación.
 
 DATO ADICIONAL (PRIVADO): El titular de la cuenta Nequi es Luis Pretelt. SóLO proporciona este nombre si el cliente lo pregunta explícitamente.
 
@@ -407,6 +420,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
 9. **ANTI-HALLUCINATION**: Si no hay etiqueta "[Imagen...]", NO confirmes nada.
 10. **AUDIOS**: Indica que solo texto, breve.
 11. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
+12. **ENVÍO DE MENÚ ("send_menu")**: Si el cliente pide el menú y decides usar el intent "send_menu", el sistema adjuntará AUTOMÁTICAMENTE una imagen bonita del menú. Por lo tanto, bajo NINGUNA CIRCUNSTANCIA escribas los platos o precios en el 'replyText'. Tu 'replyText' debe ser únicamente una frase corta como: "¡Claro! Aquí te comparto nuestro menú 👇".
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
