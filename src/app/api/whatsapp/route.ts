@@ -433,7 +433,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
     "deliveryFee": 3000, 
     "notes": "...",
     "items": [
-      { "productName": "...", "sizeName": "...", "quantity": 1, "notes": "..." }
+      { "productName": "NOMBRE EXACTO SEGÚN EL INVENTARIO", "sizeName": "...", "quantity": 1, "notes": "..." }
     ]
   }
 }
@@ -650,15 +650,24 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
             const validItems: any[] = [];
             let total = 0;
-            const normalizedProducts = products.map(p => ({ ...p, normalizedName: normalizeString(p.name) }));
+            // Ordenar por longitud descendente para evitar que palabras sueltas como "Arroz" coincidan con el primero que vean
+            const normalizedProducts = products
+              .map(p => ({ ...p, normalizedName: normalizeString(p.name) }))
+              .sort((a, b) => b.normalizedName.length - a.normalizedName.length);
 
             for (const i of od.items) {
               const inputProductName = normalizeString(i.productName || "");
-              const p = normalizedProducts.find(x =>
-                x.normalizedName === inputProductName ||
-                x.normalizedName.includes(inputProductName) ||
-                inputProductName.includes(x.normalizedName)
-              );
+              
+              // 1. Intentar coincidencia exacta primero
+              let p = normalizedProducts.find(x => x.normalizedName === inputProductName);
+              
+              // 2. Si no es exacta, buscar si el nombre ingresado contiene al producto o viceversa
+              if (!p) {
+                p = normalizedProducts.find(x => 
+                  x.normalizedName.includes(inputProductName) || 
+                  inputProductName.includes(x.normalizedName)
+                );
+              }
 
               if (p && p.sizes && p.sizes.length > 0) {
                 const inputSizeName = normalizeString(i.sizeName || "");
