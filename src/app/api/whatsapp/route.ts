@@ -25,7 +25,7 @@ const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
 // This prevents the bot from responding to multiple users at the exact same instant
 let lastGlobalReplyTime = 0;
 const MIN_INTER_USER_DELAY = 3000; // Minimum 3s between replies to different users
-const MIN_REPLY_DELAY = 10000; // Wait 10 seconds to group messages from the same user
+const MIN_REPLY_DELAY = 15000; // Wait 15 seconds to group messages from the same user
 
 // Panic mode rate limiter: sliding window of reply timestamps
 // Prevents mass-sending rejection messages that could trigger WhatsApp spam detection
@@ -349,7 +349,7 @@ Estilo con sugerencia de hora:
 
 REGLA DE ORO ANTI-SPAM: PARA EVITAR RESTRICCIONES DE WHATSAPP, NUNCA RESPONDAS EXACTAMENTE IGUAL A DOS CLIENTES. VARÍA SIEMPRE LA ESTRUCTURA, EL TONO, LAS PALABRAS Y EL USO DE EMOJIS. USA LOS GUIONES SIGUIENTES SÓLO COMO BASE DE INFORMACIÓN, NO COMO TEXTO LITERAL OBLIGATORIO (A MENOS QUE SE INDIQUE LO CONTRARIO).
 
-SIMULACIÓN HUMANA: Si tienes varias cosas que decir (ej: saludar y luego preguntar algo), separa los párrafos con DOBLE SALTO DE LÍNEA (\n\n). El sistema se encargará de enviarlos como mensajes independientes para que parezca una conversación real.
+EQUILIBRIO HUMANO Y BREVEDAD: Compórtate como un humano amable al explicar el menú o resolver dudas. SIN EMBARGO, ten en cuenta que el cliente se molesta MUCHO si envías mensajes largos al tomar el pedido. NUNCA resumas el pedido de forma extensa ni repitas detalles ya dichos. Responde máximo con 1 frase o 2. No uses doble salto de línea (\n\n).
 
 DATO ADICIONAL (PRIVADO): El titular de la cuenta Nequi es Luis Pretelt. SóLO proporciona este nombre si el cliente lo pregunta explícitamente.
 
@@ -374,8 +374,11 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
  - **COSTO MANUAL (IMPORTANTE)**: Revisa el historial de mensajes. Si ves que un humano (model) envió un mensaje que es simplemente un número (ej: "5500") después de que preguntaras por un barrio desconocido, interpreta ese número como el 'deliveryFee' para ese pedido y procede.
  - El TOTAL final que menciones debe ser la suma EXACTA de (Productos + Domicilio). Si es recoger, el total es solo el de los productos ($0 domicilio).
 
-1. **BREVEDAD ABSOLUTA (HUMANO REAL)**: Prioriza respuestas de 1 a 3 PALABRAS. Si puedes responder con una sola palabra (Ej: "Listo", "Ok", "Dale", "Perfecto", "Bueno"), HAZLO. NUNCA uses cortesía, agradecimientos largos ni frases de relleno. 
-   - ⚠️ SEGURIDAD: Varía siempre esa palabra única entre un cliente y otro para evitar bloqueos por spam.
+1. **BREVEDAD EXTREMA PARA CONFIRMACIONES**: 
+   - Puedes ser natural y amable (pero sin excederte) si el cliente pide info del menú o precios.
+   - PERO, si el cliente hace un cambio (ej: "agrega una gaseosa", "mejor que sean dos") o confirma algo (ej: "ok", "listo", "perfecto"), RESPONDE OBLIGATORIAMENTE CON 1 a 4 PALABRAS CASUALES: "Dale, agregado", "Listo 👍", "Bueno", "Entendido", "Vale", "Ya quedó".
+   - NUNCA repitas la información del pedido si ya la diste en el paso anterior.
+   - ⚠️ SEGURIDAD (ANTI-SPAM): Es CRÍTICO que varíes estas confirmaciones cortas. Si a un cliente le dices "Listo", al siguiente dile "Dale" o "Entendido 👍", para evitar bloqueos por respuestas idénticas.
 2. **AISLAMIENTO DE PEDIDO**: Si el bot confirmó orden (intent "order"), ignora platos anteriores. Nuevo mensaje = Pedido Nuevo.
 3. **INVENTARIO Y PRECIOS**: ${menuText}
 3.1. **MAPEO ARROZ CHINO**: 
@@ -400,7 +403,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
    - **FECHA**: Debe ser la fecha de HOY (${currentDate}).
    - **MONTO**: Puede ser el total o una parte. Si es una parte, DEBES mencionar brevemente cuánto falta por pagar en efectivo.
    - Si el número de destino es diferente o la fecha es vieja, RECHAZA el pago de inmediato.
-8. **CONFIRMACIÓN FINAL**: Solo si el comprobante es válido (intent "order"), confirma brevemente y da el tiempo de entrega (50-60 min domi / 20-30 min recoger).
+8. **CONFIRMACIÓN FINAL**: Solo si el comprobante es válido (o el pago es contraentrega total - intent "order"), confirma súper BREVEMENTE con una sola oración dando el tiempo de entrega (ej. "¡Listo! En 50-60 min llega."). No repitas todo el pedido de nuevo.
 9. **ANTI-HALLUCINATION**: Si no hay etiqueta "[Imagen...]", NO confirmes nada.
 10. **AUDIOS**: Indica que solo texto, breve.
 11. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
@@ -408,7 +411,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
   "intent": "chat" | "order" | "send_menu",
-  "replyText": "Respuesta variada. Usa \n\n para separar mensajes si quieres enviar más de uno.",
+  "replyText": "Respuesta EXTREMADAMENTE CORTA, concisa y directa. NADA DE REPETICIONES. Usa pocas palabras.",
   "orderData": {    // SÓLO si intent es "order"
     "customerName": "...",
     "customerAddress": "...",
