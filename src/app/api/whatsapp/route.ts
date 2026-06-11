@@ -408,7 +408,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
    - $8.000: Éxito, Triunfo, Nueva Grana, Brisas.
    - $9.000: Colinas C.
 5. **RECOLECCIÓN (LISTA CORTA)**: Pide solo lo que falte: Nombre, Dirección/Barrio, Pago. IMPORTANTE: NUNCA des el total a pagar ni los datos de transferencia sin saber primero la dirección/barrio (el costo de domicilio depende de esto).
-6. **TRANSFERENCIA**: SOLO cuando YA SEPAS la dirección/barrio, da el total resumido y los datos (ej: "El total es $X. Transfiere a Nequi 3173941189 o llave @NEQUILUI57354 y envíame la imagen"). Mantenlo BREVE y VARÍA tus palabras cada vez que lo pidas para evitar bloqueos de WhatsApp. Pide la imagen ANTES DE GENERAR LA ORDEN.
+6. **TRANSFERENCIA**: SOLO cuando YA SEPAS la dirección/barrio, da el total resumido y los datos (ej: "El total es $X. Transfiere a Nequi 3173941189 o llave (Aunque tengas que variar la forma de decirlo siempre se llamará llave y nequi) @NEQUILUI57354 y envíame la imagen"). Mantenlo BREVE y VARÍA tus palabras cada vez que lo pidas para evitar bloqueos de WhatsApp. Pide la imagen ANTES DE GENERAR LA ORDEN.
 7. **VALIDACIÓN DE COMPROBANTE (OBLIGATORIO)**: Cuando envíen la imagen, DEBES verificar visualmente en la captura:
    - **NÚMERO DE DESTINO**: Debe ser obligatoriamente el **3173941189**.
    - **FECHA**: Debe ser la fecha de HOY (${currentDate}).
@@ -655,14 +655,14 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
             for (const i of od.items) {
               const inputProductName = normalizeString(i.productName || "");
-              
+
               // 1. Intentar coincidencia exacta primero
               let p = normalizedProducts.find(x => x.normalizedName === inputProductName);
-              
+
               // 2. Si no es exacta, buscar si el nombre ingresado contiene al producto o viceversa
               if (!p) {
-                p = normalizedProducts.find(x => 
-                  x.normalizedName.includes(inputProductName) || 
+                p = normalizedProducts.find(x =>
+                  x.normalizedName.includes(inputProductName) ||
                   inputProductName.includes(x.normalizedName)
                 );
               }
