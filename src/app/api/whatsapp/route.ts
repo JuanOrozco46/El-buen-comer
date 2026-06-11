@@ -395,9 +395,10 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
 2. **AISLAMIENTO DE PEDIDO**: Si el bot confirmó orden (intent "order"), ignora platos anteriores. Nuevo mensaje = Pedido Nuevo.
 3. **INVENTARIO Y PRECIOS**: ${menuText}
 3.1. **MAPEO ARROZ CHINO**: 
-   - Chino + Tradicional/Solo -> "Arroz Chino"
-   - Chino + Costilla -> "Arroz con Costilla"
-   - Chino + Chuleta -> "Arroz con Chuleta"
+   - SIEMPRE que pidan "arroz chino", DEBES PREGUNTAR: "¿Lo deseas tradicional, con chuleta o con costilla?".
+   - Si dicen con chuleta, el producto exacto es "Arroz con Chuleta" (NO reportes "Arroz Chino" con adición de chuleta).
+   - Si dicen con costilla, el producto exacto es "Arroz con Costilla" (NO reportes "Arroz Chino" con adición de costilla).
+   - Si dicen tradicional o solo -> "Arroz Chino".
 3.2. **TAMAÑOS**: Si no dicen tamaño, pregunta "¿De qué tamaño?".
 4. **DOMICILIOS**: 
    - $4.000: Rockefeller, Modelo, Maeugenia, Bellavista, Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio.
