@@ -204,7 +204,7 @@ export async function POST(req: Request) {
         let hasImageInBatch = false;
 
         for (const item of bufferItems) {
-          if (item.content) aggregatedText += (aggregatedText ? " " : "") + item.content;
+          if (item.content) aggregatedText += (aggregatedText ? "\\n" : "") + item.content;
           if (item.base64) {
             aggregatedMedia.push({ base64: item.base64, mime: item.mimeType, type: item.mimeType.startsWith('image') ? 'image' : 'audio' });
             if (item.mimeType.startsWith('image')) hasImageInBatch = true;
@@ -407,7 +407,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
    - $7.000: Ciudadela 3/4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Isla, Cascajal, La ciudadela.
    - $8.000: Éxito, Triunfo, Nueva Grana, Brisas.
    - $9.000: Colinas C.
-5. **RECOLECCIÓN (LISTA CORTA)**: Pide solo lo que falte: Nombre, Dirección/Barrio, Pago. IMPORTANTE: NUNCA des el total a pagar ni los datos de transferencia sin saber primero la dirección/barrio (el costo de domicilio depende de esto).
+5. **RECOLECCIÓN (LISTA CORTA)**: Pide solo lo que falte: Nombre, Dirección/Barrio, Pago. IMPORTANTE: NUNCA des el total a pagar ni los datos de transferencia sin saber primero la dirección/barrio. Si faltan VARIOS datos (ej. nombre, barrio, tamaños), PÍDELOS TODOS JUNTOS en una sola respuesta amigable, no hagas una pregunta por cada mensaje.
 6. **TRANSFERENCIA**: SOLO cuando YA SEPAS la dirección/barrio, da el total resumido y los datos (ej: "El total es $X. Transfiere a Nequi 3173941189 o llave (Aunque tengas que variar la forma de decirlo siempre se llamará llave y nequi) @NEQUILUI57354 y envíame la imagen"). Mantenlo BREVE y VARÍA tus palabras cada vez que lo pidas para evitar bloqueos de WhatsApp. Pide la imagen ANTES DE GENERAR LA ORDEN.
 7. **VALIDACIÓN DE COMPROBANTE (OBLIGATORIO)**: Cuando envíen la imagen, DEBES verificar visualmente en la captura:
    - **NÚMERO DE DESTINO**: Debe ser obligatoriamente el **3173941189**.
@@ -419,6 +419,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
 10. **AUDIOS**: Indica que solo texto, breve.
 11. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
 12. **ENVÍO DE MENÚ ("send_menu")**: Si el cliente pide el menú y decides usar el intent "send_menu", el sistema adjuntará AUTOMÁTICAMENTE una imagen bonita del menú. Por lo tanto, bajo NINGUNA CIRCUNSTANCIA escribas los platos o precios en el 'replyText'. Tu 'replyText' debe ser únicamente una frase corta como: "¡Claro! Aquí te comparto nuestro menú 👇".
+13. **RESTRICCIÓN DE ORDEN**: NUNCA uses el intent "order" si faltan datos obligatorios para el pedido (Nombre, Dirección/Barrio exacto, definición clara de los productos y tamaños, o la confirmación/imagen de pago según corresponda). Si falta CUALQUIER DATO, usa "chat" y averigua la información faltante ANTES de confirmar la orden.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
@@ -452,6 +453,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         const preGeminiBuffer = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone } });
         if (preGeminiBuffer.some((b: any) => !itemIds.includes(b.id))) {
           console.log(`[WhatsApp Bot] New messages arrived just before Gemini call for ${senderPhone}. Regrouping...`);
+          await new Promise(r => setTimeout(r, 2000)); // Give them a moment to finish typing
           continue;
         }
 
@@ -502,6 +504,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         const postGeminiBuffer = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone } });
         if (postGeminiBuffer.some((b: any) => !itemIds.includes(b.id))) {
           console.log(`[WhatsApp Bot] New messages arrived during Gemini call for ${senderPhone}. Regrouping...`);
+          await new Promise(r => setTimeout(r, 2000)); // Wait for the new messages to be fully sent
           continue;
         }
 
