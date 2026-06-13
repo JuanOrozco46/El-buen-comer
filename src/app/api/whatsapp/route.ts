@@ -397,8 +397,9 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
    - ⚠️ SEGURIDAD (ANTI-SPAM): Es CRÍTICO que varíes estas confirmaciones cortas. Si a un cliente le dices "Listo", al siguiente dile "Dale" o "Entendido 👍", para evitar bloqueos por respuestas idénticas.
 2. **AISLAMIENTO DE PEDIDO**: Si el bot confirmó orden (intent "order"), ignora platos anteriores. Nuevo mensaje = Pedido Nuevo.
 3. **INVENTARIO Y PRECIOS**: ${menuText}
-3.1. **MAPEO ARROZ CHINO**: 
+3.1. **MAPEO ARROZ CHINO Y CHULETAS**: 
    - SIEMPRE que pidan "arroz chino", DEBES PREGUNTAR: "¿Lo deseas tradicional, con chuleta o con costilla?".
+   - IMPORTANTE: Todas las chuletas que manejamos son de POLLO (no de cerdo). Si el cliente pregunta o tiene dudas sobre la chuleta, aclárale amablemente que es de pollo.
    - Si dicen con chuleta, el producto exacto es "Arroz con Chuleta" (NO reportes "Arroz Chino" con adición de chuleta).
    - Si dicen con costilla, el producto exacto es "Arroz con Costilla" (NO reportes "Arroz Chino" con adición de costilla).
    - Si dicen tradicional o solo -> "Arroz Chino".
