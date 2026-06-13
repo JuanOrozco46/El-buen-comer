@@ -170,6 +170,7 @@ export async function POST(req: Request) {
     // 1. Lock check
     let chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
     if (!chat) chat = await prisma.whatsAppChat.create({ data: { phone: senderPhone, history: [] } });
+    const chatRealUpdatedAt = chat.updatedAt;
 
     const ONE_MINUTE_AGO = new Date(Date.now() - 60000);
     if ((chat as any).isProcessing && chat.updatedAt > ONE_MINUTE_AGO) return NextResponse.json({ received: true });
@@ -252,7 +253,9 @@ export async function POST(req: Request) {
         let history: any[] = (currentChat?.history as any[]) || [];
 
         // --- HISTORY EXPIRATION (DAY CHANGE OR 2 HOURS) ---
-        const lastUpdateDate = new Date(currentChat!.updatedAt);
+        // CRÍTICO: Usamos chatRealUpdatedAt en la primera interación porque el bloqueo (lock) de arriba sobrescribió currentChat.updatedAt a "ahora". 
+        // Si no hacemos esto, el bot piensa que SIEMPRE se acaba de actualizar y NUNCA borra historiales viejos.
+        const lastUpdateDate = loops === 0 ? new Date(chatRealUpdatedAt) : new Date();
         const now = new Date();
         const lastDayStr = lastUpdateDate.toLocaleDateString("en-US", { timeZone: "America/Bogota" });
         const currentDayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota" });
@@ -267,7 +270,7 @@ export async function POST(req: Request) {
         // --- NEW: Handle Receipt Only (Phone orders) ---
         const isOnlyReceipt = aggregatedMedia.length > 0 && aggregatedMedia.every(m => m.type === 'image') && !aggregatedText;
         const FIFTEEN_MINS_AGO = Date.now() - (15 * 60 * 1000);
-        const isFreshConversation = history.length > 0 && new Date(currentChat!.updatedAt).getTime() > FIFTEEN_MINS_AGO;
+        const isFreshConversation = history.length > 0 && lastUpdateTime > FIFTEEN_MINS_AGO;
 
         if (isOnlyReceipt && !isFreshConversation) {
           console.log(`[WhatsApp Bot] Detected receipt only (Phone order) for ${senderPhone}. Sending short confirmation.`);
@@ -400,6 +403,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
    - Si dicen con costilla, el producto exacto es "Arroz con Costilla" (NO reportes "Arroz Chino" con adición de costilla).
    - Si dicen tradicional o solo -> "Arroz Chino".
 3.2. **TAMAÑOS**: Si no dicen tamaño, pregunta "¿De qué tamaño?".
+3.3. **CANTIDADES EXACTAS**: NUNCA alteres ni intentes adivinar las cantidades de los productos. Si el cliente escribe el número "1" (ej: "1 arroz"), confírmale exactamente UN plato. NO te confundas con frases como "un domicilio" o "un pedido" usándolas para sumar cantidades ficticias. Si el cliente pide un producto debes poner la quantity en 1, no asumas 2.
 4. **DOMICILIOS**: 
    - $4.000: Rockefeller, Modelo, Maeugenia, Bellavista, Tamarindo, Juan 23, Porvenir, Eucaristico, 14 Julio.
    - $5.000: Cristal, Oriente, Transformadora, Galeón, Miraflores, Masamorra, San Luis, Kennedy, El 5.
