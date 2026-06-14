@@ -528,16 +528,18 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               break;
             }
 
-            // Individual user limit (Hardened Panic: Only ONE reply per session)
+            // Individual user limit (Hardened Panic)
             const userRef = userPanicReplies[senderPhone] || { count: 0, lastTime: 0 };
-            if (userRef.count >= 1) {
-              console.log(`[WhatsApp Bot] Panic: User ${senderPhone} already received the rejection notice. Ignoring.`);
+            const timeSinceLastNotice = now - userRef.lastTime;
+            
+            if (userRef.count >= PANIC_MAX_USER_REPLIES || (userRef.count >= 1 && timeSinceLastNotice < PANIC_COOLDOWN_PER_USER)) {
+              console.log(`[WhatsApp Bot] Panic: User ${senderPhone} already received the rejection notice recently or too many times. Ignoring.`);
               // CRITICAL: Clear buffer so these ignored messages don't reappear when Normal Mode returns
               await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
               break;
             }
 
-            userRef.count = 1;
+            userRef.count += 1;
             userRef.lastTime = now;
             userPanicReplies[senderPhone] = userRef;
 
