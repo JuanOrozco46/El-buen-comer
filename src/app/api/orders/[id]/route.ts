@@ -47,6 +47,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
       // 2. Handle Item Updates if provided (Editing Mode)
       if (items && Array.isArray(items)) {
+        // --- RESTORE STOCK FOR OLD ITEMS ---
+        for (const oldItem of existingOrder.items) {
+          const recipes = await tx.recipe.findMany({
+            where: { productId: oldItem.productId, sizeName: oldItem.sizeName }
+          });
+          for (const recipe of recipes) {
+            await tx.ingredient.update({
+              where: { id: recipe.ingredientId },
+              data: { stock: { increment: Number(recipe.quantity) * Number(oldItem.quantity) } }
+            });
+          }
+        }
+
         // Delete existing items for this order
         await tx.orderItem.deleteMany({
           where: { orderId }
@@ -63,6 +76,31 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             notes: item.notes || null
           }))
         });
+
+        // --- DEDUCT STOCK FOR NEW ITEMS ---
+        for (const newItem of items) {
+          const productId = Number(newItem.productId || newItem.product.id);
+          const sizeName = newItem.sizeName || newItem.size?.name || "Personal";
+          const quantity = Number(newItem.quantity);
+
+          const recipes = await tx.recipe.findMany({
+            where: { productId, sizeName }
+          });
+          for (const recipe of recipes) {
+            await tx.ingredient.update({
+              where: { id: recipe.ingredientId },
+              data: { stock: { decrement: Number(recipe.quantity) * quantity } }
+            });
+            await tx.inventoryLog.create({
+              data: {
+                ingredientId: recipe.ingredientId,
+                amount: Number(recipe.quantity) * quantity,
+                type: 'OUT',
+                reason: `Edición Orden #${orderId}`
+              }
+            });
+          }
+        }
       }
 
       // 3. Update order fields
@@ -124,13 +162,39 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const orderId = Number(id);
     if (isNaN(orderId)) return NextResponse.json({ error: "ID inválido" }, { status: 400 });
 
-    // We cancel the order by deleting it (or marking it as CANCELLED)
-    // For now, the user asked to "borrar", so we delete it from DB or items first.
-    await prisma.$transaction([
-      prisma.payment.deleteMany({ where: { orderId } }),
-      prisma.orderItem.deleteMany({ where: { orderId } }),
-      prisma.order.delete({ where: { id: orderId } })
-    ]);
+    // Transaction for deletion and stock restoration
+    await prisma.$transaction(async (tx) => {
+      const existingOrder = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true }
+      });
+      if (!existingOrder) return;
+
+      // Restore stock
+      for (const item of existingOrder.items) {
+        const recipes = await tx.recipe.findMany({
+          where: { productId: item.productId, sizeName: item.sizeName }
+        });
+        for (const recipe of recipes) {
+          await tx.ingredient.update({
+            where: { id: recipe.ingredientId },
+            data: { stock: { increment: Number(recipe.quantity) * Number(item.quantity) } }
+          });
+          await tx.inventoryLog.create({
+            data: {
+              ingredientId: recipe.ingredientId,
+              amount: Number(recipe.quantity) * Number(item.quantity),
+              type: 'IN',
+              reason: `Cancelación Orden #${orderId}`
+            }
+          });
+        }
+      }
+
+      await tx.payment.deleteMany({ where: { orderId } });
+      await tx.orderItem.deleteMany({ where: { orderId } });
+      await tx.order.delete({ where: { id: orderId } });
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

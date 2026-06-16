@@ -732,8 +732,21 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
                 if (existing) {
                   console.log(`[WhatsApp Bot] Updating existing order #${existing.id} for ${senderPhone}`);
-                  // Note: Re-stocking of old items is handled outside or per-item if needed.
-                  // For simplicity in WhatsApp, we replace all items.
+                  
+                  // --- RESTORE STOCK FOR OLD ITEMS ---
+                  for (const oldItem of existing.items) {
+                    const recipes = await tx.recipe.findMany({
+                      where: { productId: oldItem.productId, sizeName: oldItem.sizeName }
+                    });
+                    for (const recipe of recipes) {
+                      await tx.ingredient.update({
+                        where: { id: recipe.ingredientId },
+                        data: { stock: { increment: Number(recipe.quantity) * Number(oldItem.quantity) } }
+                      });
+                    }
+                  }
+
+                  // Replace all items
                   await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
                   const updated = await tx.order.update({
                     where: { id: existing.id },
@@ -768,29 +781,34 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                   });
                   finalOrderId = created.id;
                 }
-              }, {
-                isolationLevel: 'Serializable',
-                timeout: 20000
-              });
 
-              // 2. Inventory Updates (Separate attempts, don't crash if recipe incomplete)
-              if (finalOrderId) {
-                try {
+                // --- DEDUCT STOCK FOR NEW ITEMS (INSIDE TRANSACTION) ---
+                if (finalOrderId) {
                   for (const vi of validItems) {
-                    const recs = await prisma.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
+                    const recs = await tx.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
                     for (const r of recs) {
                       if (r.ingredientId) {
-                        await prisma.ingredient.update({
+                        await tx.ingredient.update({
                           where: { id: r.ingredientId },
                           data: { stock: { decrement: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0) } }
+                        });
+                        await tx.inventoryLog.create({
+                          data: {
+                            ingredientId: r.ingredientId,
+                            amount: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0),
+                            type: 'OUT',
+                            reason: `Venta WhatsApp #${finalOrderId}`
+                          }
                         });
                       }
                     }
                   }
-                } catch (invErr) {
-                  console.error("[WhatsApp Bot] Inventory update failed but order was saved:", invErr);
                 }
-              }
+              }, {
+                isolationLevel: 'Serializable',
+                timeout: 30000
+              });
+
               console.log(`[WhatsApp Bot] Order generated/updated successfully for ${senderPhone}`);
             } else {
               console.error(`[WhatsApp Bot] Order generation failed for ${senderPhone} - items Matched: ${validItems.length}/${od.items?.length}, user: ${!!user}`);
