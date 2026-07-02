@@ -17,6 +17,57 @@ function normalizeString(str: string): string {
     .trim();
 }
 
+/**
+ * Generates a randomized response to notify the user that audio messages are not supported.
+ * Highly varied to prevent WhatsApp spam reporting.
+ */
+function getAudioRejectionMessage(): string {
+  const intros = [
+    "¡Hola! Disculpa, por este medio no tengo la posibilidad de escuchar audios.",
+    "Hola, qué pena contigo. No puedo procesar notas de voz por aquí.",
+    "¡Hola! Qué pena, pero por ahora solo respondo a mensajes que sean de texto.",
+    "Hola, un gusto saludarte. Te cuento que no me es posible reproducir mensajes de voz por acá.",
+    "Hola, disculpa. La cocina y el sistema por ahora no reciben audios, solo mensajes escritos.",
+    "¡Hola! Qué pena contigo pero por aquí no me da para escuchar notas de voz.",
+    "Qué tal, disculpa la molestia pero se me hace imposible escuchar audios en este momento.",
+    "Hola. Te comento que este chat de WhatsApp solo procesa mensajes de texto (no audios).",
+    "Hola! De momento no puedo reproducir o entender mensajes de voz.",
+    "Buenas, qué pena. Lamentablemente en esta línea no escuchamos notas de voz."
+  ];
+
+  const actions = [
+    "Por favor escríbeme lo que necesitas en un mensaje de texto para poder ayudarte.",
+    "¿Me podrías escribir tu pedido o consulta por texto?",
+    "Escríbeme tu pedido por aquí mismo en texto y de una te colaboro.",
+    "Por favor envíame tu mensaje escrito y con mucho gusto te atiendo.",
+    "Escríbeme lo que deseas ordenar en un mensaje de texto normal por favor.",
+    "Escríbeme tu mensaje por texto y con todo gusto te atiendo.",
+    "Si pudieras escribirme tu pedido por fa, te lo respondería de inmediato.",
+    "Por fa envíanos tu mensaje por escrito para poder tomar tu pedido.",
+    "Escríbenos tu orden por texto y con gusto te colaboramos."
+  ];
+
+  const emojis = [" 🙏", " 😊", " 📝", " 😉", " 📲", " ✍️", " 🍳", " ✅", ""];
+  
+  const closings = [
+    " ¡Muchas gracias!",
+    " ¡Quedo atento!",
+    " ¡Mil gracias por la comprensión!",
+    " Qué pena la molestia.",
+    " Quedo súper atento a tu texto.",
+    " ¡Gracias!",
+    " Agradezco tu colaboración.",
+    ""
+  ];
+
+  const intro = intros[Math.floor(Math.random() * intros.length)];
+  const action = actions[Math.floor(Math.random() * actions.length)];
+  const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+  const closing = closings[Math.floor(Math.random() * closings.length)];
+
+  return `${intro} ${action}${emoji}${closing}`;
+}
+
 // Throttling for admin alerts to avoid spam
 let lastAlertTimestamp = 0;
 const ALERT_COOLDOWN = 1000 * 60 * 15; // 15 minutes
@@ -203,16 +254,28 @@ export async function POST(req: Request) {
         let aggregatedText = "";
         const aggregatedMedia: any[] = [];
         let hasImageInBatch = false;
+        let hasAudioInBatch = false;
 
         for (const item of bufferItems) {
           if (item.content) aggregatedText += (aggregatedText ? "\\n" : "") + item.content;
+
+          const isAudio = item.mimeType?.startsWith('audio') || item.mimeType?.includes('audio') || false;
+          if (isAudio) {
+            hasAudioInBatch = true;
+          }
+
           if (item.base64) {
-            aggregatedMedia.push({ base64: item.base64, mime: item.mimeType, type: item.mimeType.startsWith('image') ? 'image' : 'audio' });
-            if (item.mimeType.startsWith('image')) hasImageInBatch = true;
+            const isImg = item.mimeType?.startsWith('image') || false;
+            aggregatedMedia.push({ 
+              base64: item.base64, 
+              mime: item.mimeType, 
+              type: isImg ? 'image' : 'audio' 
+            });
+            if (isImg) hasImageInBatch = true;
           }
         }
 
-        if (!aggregatedText && aggregatedMedia.length === 0) {
+        if (!aggregatedText && aggregatedMedia.length === 0 && !hasAudioInBatch) {
           await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
           break;
         }
@@ -477,37 +540,45 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         const fallbackModels = ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-pro"];
         let geminiResponse: any = null;
 
-        for (const modelName of fallbackModels) {
-          if (geminiResponse) break;
+        if (hasAudioInBatch) {
+          console.log(`[WhatsApp Bot] Audio message detected in batch for ${senderPhone}. Generating local audio rejection response.`);
+          geminiResponse = {
+            intent: "chat",
+            replyText: getAudioRejectionMessage()
+          };
+        } else {
+          for (const modelName of fallbackModels) {
+            if (geminiResponse) break;
 
-          let tries = (modelName === fallbackModels[0]) ? 3 : 2; // More retries for primary
-          let waitTime = 2000;
-          const currentModel = genAI.getGenerativeModel({ model: modelName });
+            let tries = (modelName === fallbackModels[0]) ? 3 : 2; // More retries for primary
+            let waitTime = 2000;
+            const currentModel = genAI.getGenerativeModel({ model: modelName });
 
-          console.log(`[WhatsApp Bot] Querying model ${modelName} for ${senderPhone}`);
+            console.log(`[WhatsApp Bot] Querying model ${modelName} for ${senderPhone}`);
 
-          while (tries > 0) {
-            try {
-              const session = currentModel.startChat({
-                systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
-                generationConfig: { responseMimeType: "application/json" },
-                history: safeHistory
-              });
-              const res = await session.sendMessage(messageParts);
-              const textResponse = res.response.text().replace(/```json\n?|```\n?/g, "").trim();
-              console.log(`[WhatsApp Bot] ${modelName} responded: ${textResponse}`);
-              geminiResponse = JSON.parse(textResponse);
-              break;
-            } catch (e: any) {
-              tries--;
-              console.error(`[WhatsApp Bot] ${modelName} error (${senderPhone}), retries left: ${tries}. Error: ${e.message}`);
-              if (tries > 0) {
-                await new Promise(r => setTimeout(r, waitTime));
-                waitTime += 2000;
+            while (tries > 0) {
+              try {
+                const session = currentModel.startChat({
+                  systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
+                  generationConfig: { responseMimeType: "application/json" },
+                  history: safeHistory
+                });
+                const res = await session.sendMessage(messageParts);
+                const textResponse = res.response.text().replace(/```json\n?|```\n?/g, "").trim();
+                console.log(`[WhatsApp Bot] ${modelName} responded: ${textResponse}`);
+                geminiResponse = JSON.parse(textResponse);
+                break;
+              } catch (e: any) {
+                tries--;
+                console.error(`[WhatsApp Bot] ${modelName} error (${senderPhone}), retries left: ${tries}. Error: ${e.message}`);
+                if (tries > 0) {
+                  await new Promise(r => setTimeout(r, waitTime));
+                  waitTime += 2000;
+                }
               }
             }
+            if (!geminiResponse) console.warn(`[WhatsApp Bot] Model ${modelName} exhausted all retries. Moving to next fallback if any.`);
           }
-          if (!geminiResponse) console.warn(`[WhatsApp Bot] Model ${modelName} exhausted all retries. Moving to next fallback if any.`);
         }
 
         // Check for new messages just before sending (Gemini takes time)
