@@ -48,7 +48,7 @@ function getAudioRejectionMessage(): string {
   ];
 
   const emojis = [" 🙏", " 😊", " 📝", " 😉", " 📲", " ✍️", " 🍳", " ✅", ""];
-  
+
   const closings = [
     " ¡Muchas gracias!",
     " ¡Quedo atento!",
@@ -266,10 +266,10 @@ export async function POST(req: Request) {
 
           if (item.base64) {
             const isImg = item.mimeType?.startsWith('image') || false;
-            aggregatedMedia.push({ 
-              base64: item.base64, 
-              mime: item.mimeType, 
-              type: isImg ? 'image' : 'audio' 
+            aggregatedMedia.push({
+              base64: item.base64,
+              mime: item.mimeType,
+              type: isImg ? 'image' : 'audio'
             });
             if (isImg) hasImageInBatch = true;
           }
@@ -606,7 +606,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             // Individual user limit (Hardened Panic)
             const userRef = userPanicReplies[senderPhone] || { count: 0, lastTime: 0 };
             const timeSinceLastNotice = now - userRef.lastTime;
-            
+
             if (userRef.count >= PANIC_MAX_USER_REPLIES || (userRef.count >= 1 && timeSinceLastNotice < PANIC_COOLDOWN_PER_USER)) {
               console.log(`[WhatsApp Bot] Panic: User ${senderPhone} already received the rejection notice recently or too many times. Ignoring.`);
               // CRITICAL: Clear buffer so these ignored messages don't reappear when Normal Mode returns
@@ -642,12 +642,18 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             geminiResponse.replyText?.toLowerCase().includes("transferencia") ||
             geminiResponse.replyText?.toLowerCase().includes("comprobante");
 
-          const hallucinatedConfirmation = (
-            /comprobante.*(recibido|confirmado|aprobado|correcto)/i.test(geminiResponse.replyText || "") ||
-            /transferencia.*(recibida|confirmada|aprobada)/i.test(geminiResponse.replyText || "") ||
-            /pago.*recibido/i.test(geminiResponse.replyText || "") ||
-            /pedido.*(confirmado|listo para preparar)/i.test(geminiResponse.replyText || "")
-          ) && isTransfer && !imagePresent;
+          // Rebuild orderData from history if Gemini confirms a payment but uses "chat" intent without repeating items.
+          const isConfirmingPayment = (
+            /comprobante.*(recibido|confirmado|aprobado|correcto|verificado|listo|ok)/i.test(geminiResponse.replyText || "") ||
+            /transferencia.*(recibida|confirmada|aprobada|correcta|verificada|ok|exitosa)/i.test(geminiResponse.replyText || "") ||
+            /pago.*(recibido|confirmado|verificado|aprobado|exitoso)/i.test(geminiResponse.replyText || "") ||
+            /recibido.*(comprobante|pago|transferencia)/i.test(geminiResponse.replyText || "") ||
+            /pedido.*(confirmado|listo para preparar)/i.test(geminiResponse.replyText || "") ||
+            /pago.*exitoso/i.test(geminiResponse.replyText || "")
+          );
+
+          // ⚠️ SAFEGUARD 1: Detect and BLOCK false/hallucinated payment confirmations if NO image has been sent
+          const hallucinatedConfirmation = isTransfer && isConfirmingPayment && !imagePresent;
 
           if ((geminiResponse.intent === "order" && isTransfer && !imagePresent) || hallucinatedConfirmation) {
             console.error(`[WhatsApp Bot] BLOCKING order/hallucination for ${senderPhone}: No image found.`);
@@ -662,10 +668,43 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               "¡Hola! No veo el comprobante. Por favor, asegúrate de adjuntar la imagen para confirmar el pedido. ✅"
             ];
             geminiResponse.replyText = variations[Math.floor(Math.random() * variations.length)];
-          } else if (geminiResponse.intent === "chat" && geminiResponse.replyText?.toLowerCase().includes("comprobante") && geminiResponse.orderData?.items?.length > 0 && imagePresent) {
-            // Bot was right to confirm, but used wrong intent
-            console.warn(`[WhatsApp Bot] Intent misclassification alert for ${senderPhone}. Correcting to 'order'.`);
-            geminiResponse.intent = "order";
+          }
+          // ⚠️ RECOVERY 2: If image IS present, and bot confirms receipt, ensure intent is "order" and pull order data from history
+          else if (imagePresent && isConfirmingPayment) {
+            console.log(`[WhatsApp Bot] Bot is confirming payment via image for ${senderPhone}. Ensuring intent is 'order'.`);
+            
+            // Check if current message already contains orderData with items
+            const currentHasItems = geminiResponse.orderData && geminiResponse.orderData.items && geminiResponse.orderData.items.length > 0;
+            
+            if (!currentHasItems) {
+              console.log(`[WhatsApp Bot] Current response lacks items. Rescuing order from history...`);
+              let lastOrderDataInHistory: any = null;
+              for (let idx = history.length - 1; idx >= 0; idx--) {
+                const hMsg = history[idx];
+                if (hMsg.role === "model") {
+                  try {
+                    const parsed = JSON.parse(hMsg.text);
+                    if (parsed.orderData && parsed.orderData.items && parsed.orderData.items.length > 0) {
+                      lastOrderDataInHistory = parsed.orderData;
+                      console.log(`[WhatsApp Bot] Rescued orderData from history index ${idx}:`, JSON.stringify(lastOrderDataInHistory));
+                      break;
+                    }
+                  } catch (e) {}
+                }
+              }
+
+              if (lastOrderDataInHistory) {
+                geminiResponse.intent = "order";
+                geminiResponse.orderData = lastOrderDataInHistory;
+                console.log(`[WhatsApp Bot] Corrected intent to 'order' with rescued items for ${senderPhone}.`);
+              } else {
+                console.warn(`[WhatsApp Bot] Payment confirmed but could not rescue orderData from history for ${senderPhone}.`);
+              }
+            } else {
+              // Current response already has the items in orderData
+              geminiResponse.intent = "order";
+              console.log(`[WhatsApp Bot] Keeping intent 'order' since current response has orderData for ${senderPhone}.`);
+            }
           }
 
           // --- TYPING INDICATOR: show "escribiendo..." before sending ---
@@ -681,71 +720,31 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             continue;
           }
 
-          if (geminiResponse.intent === "send_menu") {
-            await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
-          }
-          else {
-            // Fragmenatación de mensajes: dividir por doble salto de línea
-            const textToSplit = geminiResponse.replyText || "";
-            const messageChunks = textToSplit.split("\n\n").map((c: string) => c.trim()).filter((c: string) => c.length > 0);
-
-            for (let i = 0; i < messageChunks.length; i++) {
-              await sendWhatsAppMessage(remoteJid, messageChunks[i]);
-
-              // Small delay between chunks to appear more human, except for the last one
-              if (i < messageChunks.length - 1) {
-                const chunkDelay = Math.floor(Math.random() * 2500) + 1000; // 1-3.5s
-                console.log(`[WhatsApp Bot] Fragmentation delay: waiting ${chunkDelay}ms before next chunk for ${senderPhone}`);
-                await new Promise(r => setTimeout(r, chunkDelay));
-                await sendTypingIndicator(remoteJid, chunkDelay + 800); // Keep typing indicator alive
-
-                // Check if user replied while we were sending chunks
-                const intraChunkBuffer = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone } });
-                if (intraChunkBuffer.some((b: any) => !itemIds.includes(b.id))) {
-                  console.log(`[WhatsApp Bot] User replied between chunks for ${senderPhone}. Stopping current response to regroup.`);
-                  break; // Stop sending chunks, loop will pick up new message
-                }
-              }
-            }
-          }
-
-          // Update global reply timestamp
-          lastGlobalReplyTime = Date.now();
-
-          // --- FINAL HISTORY COMMIT ---
-          // Now that we actually sent the message and didn't abort/regroup, we save the full exchange
-          const finalHistoryToSave = JSON.parse(JSON.stringify([...preliminaryHistoryWithCurrentUserMessage, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50)));
-          await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistoryToSave, updatedAt: new Date() } });
-
+          // =====================================================================
+          // ORDER INTENT: Create order in DB FIRST, then send confirmation
+          // =====================================================================
           if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
             const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
-            // Try to use the active waiter logged into the POS, but ONLY if they have the WAITER role
             let user: any = null;
             if (settings?.activeWaiterId) {
               user = await prisma.user.findFirst({
                 where: { id: Number(settings.activeWaiterId), role: { in: ["WAITER", "CASHIER"] } }
               });
             }
-            // Fallback to the first available WAITER or CASHIER in the database
             if (!user) user = await prisma.user.findFirst({ where: { role: { in: ["WAITER", "CASHIER"] } } });
-            // Absolute fallback to ANY user (safety) if no Waiters are found
             if (!user) user = await prisma.user.findFirst();
 
             const validItems: any[] = [];
+            const unmatchedItems: string[] = [];
             let total = 0;
-            // Ordenar por longitud descendente para evitar que palabras sueltas como "Arroz" coincidan con el primero que vean
             const normalizedProducts = products
               .map(p => ({ ...p, normalizedName: normalizeString(p.name) }))
               .sort((a, b) => b.normalizedName.length - a.normalizedName.length);
 
             for (const i of od.items) {
               const inputProductName = normalizeString(i.productName || "");
-
-              // 1. Intentar coincidencia exacta primero
               let p = normalizedProducts.find(x => x.normalizedName === inputProductName);
-
-              // 2. Si no es exacta, buscar si el nombre ingresado contiene al producto o viceversa
               if (!p) {
                 p = normalizedProducts.find(x =>
                   x.normalizedName.includes(inputProductName) ||
@@ -756,7 +755,6 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               if (p && p.sizes && p.sizes.length > 0) {
                 const inputSizeName = normalizeString(i.sizeName || "");
                 const s = p.sizes.find(z => normalizeString(z.name) === inputSizeName) || p.sizes[0];
-
                 validItems.push({
                   productId: p.id,
                   sizeName: s.name || "Personal",
@@ -766,133 +764,204 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                 });
                 total += (Number(s.price) || 0) * (Math.max(1, Number(i.quantity) || 1));
               } else {
-                console.warn(`[WhatsApp Bot] Product not matched or has no sizes: "${i.productName}" for ${senderPhone}`);
+                console.warn(`[WhatsApp Bot] Product not matched: "${i.productName}" for ${senderPhone}`);
+                unmatchedItems.push(`${i.quantity || 1}x ${i.productName || "Producto"} (${i.sizeName || "Familiar"})`);
               }
             }
 
-            if (validItems.length > 0 && user) {
-              // FOR WHATSAPP: The absolute identifier for the chat is the sender's phone.
-              // We must NOT allow Gemini to overwrite this for lookup purposes, or another
-              // user mentioning the same contact phone could hijack this order.
-              const lookupPhone = senderPhone;
+            // Fallback: If absolutely no products matched, we use a placeholder product
+            // from the database so the order can still be created, and we list everything in the notes.
+            if (validItems.length === 0 && products.length > 0) {
+              const fallbackProduct = products[0];
+              const fallbackSize = fallbackProduct.sizes[0] || { name: "Personal", price: 0 };
+              validItems.push({
+                productId: fallbackProduct.id,
+                sizeName: fallbackSize.name || "Personal",
+                quantity: 1,
+                price: 0, // Set price to 0 so value is not wrong
+                notes: `⚠️ ITEM COMPODÍN (No se detectó automáticamente en el menú)`
+              });
+              console.log(`[WhatsApp Bot] No items matched. Used placeholder product: ${fallbackProduct.id}`);
+            }
 
-              // If Gemini provided a DIFFERENT contact phone, we preserve it in notes but NOT as the primary key.
+            let orderCreatedSuccessfully = false;
+
+            if (validItems.length > 0 && user) {
+              const lookupPhone = senderPhone;
               let additionalNotes = od.notes || "";
               if (od.customerPhone && normalizarNumero(od.customerPhone) !== senderPhone) {
                 additionalNotes += `\n[TELÉFONO CONTACTO: ${od.customerPhone}]`;
               }
-
+              if (unmatchedItems.length > 0) {
+                additionalNotes += `\n⚠️ PRODUCTOS SIN COINCIDENCIA MANUAL (Revisar en cocina):\n${unmatchedItems.map(item => `- ${item}`).join('\n')}`;
+              }
               const orderSource = (globalSettings?.isPickupOnlyActive || od.customerAddress?.toLowerCase().includes("recoger") || !od.customerAddress) ? "TAKEAWAY" : "DELIVERY";
 
-              // 1. Transaction to Create/Update Order
               let finalOrderId: number | null = null;
-              await prisma.$transaction(async (tx) => {
-                const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
-                const existing = await tx.order.findFirst({
-                  where: {
-                    customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
-                    status: { in: ["PENDING", "PREPARING"] },
-                    createdAt: { gte: SIX_HOURS_AGO }
-                  },
-                  include: { items: true },
-                  orderBy: { createdAt: 'desc' }
-                });
-
-                let name = od.customerName || pushName || `WA: ${senderPhone}`;
-                if (od.customerAddress?.toLowerCase().includes("recoger")) name = `Recoger - ${name.replace(/^Recoger - /, '')}`;
-                const finalName = String(name || "Cliente WhatsApp").substring(0, 191);
-                const finalAddress = String(od.customerAddress || "").substring(0, 191) || null;
-                const finalNotes = String(additionalNotes || "").substring(0, 500) || null;
-                const userIdValue = Number(user?.id) || 1;
-
-                if (existing) {
-                  console.log(`[WhatsApp Bot] Updating existing order #${existing.id} for ${senderPhone}`);
-                  
-                  // --- RESTORE STOCK FOR OLD ITEMS ---
-                  for (const oldItem of existing.items) {
-                    const recipes = await tx.recipe.findMany({
-                      where: { productId: oldItem.productId, sizeName: oldItem.sizeName }
-                    });
-                    for (const recipe of recipes) {
-                      await tx.ingredient.update({
-                        where: { id: recipe.ingredientId },
-                        data: { stock: { increment: Number(recipe.quantity) * Number(oldItem.quantity) } }
-                      });
-                    }
-                  }
-
-                  // Replace all items
-                  await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
-                  const updated = await tx.order.update({
-                    where: { id: existing.id },
-                    data: {
-                      customerName: finalName,
-                      customerAddress: finalAddress,
-                      notes: finalNotes,
-                      total: Number(total) || 0,
-                      deliveryFee: Number(od.deliveryFee) || 0,
-                      source: orderSource,
-                      status: "PENDING",
-                      items: { create: validItems },
-                      updatedAt: new Date()
-                    }
-                  });
-                  finalOrderId = updated.id;
-                } else {
-                  console.log(`[WhatsApp Bot] Creating new order for ${senderPhone}`);
-                  const created = await tx.order.create({
-                    data: {
-                      userId: userIdValue,
-                      customerName: finalName,
+              for (let dbRetries = 0; dbRetries < 3; dbRetries++) {
+              try {
+                // TRANSACTION 1: Create/Update the Order (the critical part)
+                // Uses ReadCommitted instead of Serializable to avoid deadlocks
+                // when multiple WhatsApp orders arrive simultaneously
+                await prisma.$transaction(async (tx) => {
+                  const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
+                  const existing = await tx.order.findFirst({
+                    where: {
                       customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
-                      customerAddress: finalAddress,
-                      source: orderSource,
-                      status: "PENDING",
-                      total: Number(total) || 0,
-                      deliveryFee: Number(od.deliveryFee) || 0,
-                      notes: finalNotes,
-                      items: { create: validItems }
-                    }
+                      status: { in: ["PENDING", "PREPARING"] },
+                      createdAt: { gte: SIX_HOURS_AGO }
+                    },
+                    include: { items: true },
+                    orderBy: { createdAt: 'desc' }
                   });
-                  finalOrderId = created.id;
-                }
 
-                // --- DEDUCT STOCK FOR NEW ITEMS (INSIDE TRANSACTION) ---
-                if (finalOrderId) {
-                  for (const vi of validItems) {
-                    const recs = await tx.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
-                    for (const r of recs) {
-                      if (r.ingredientId) {
-                        await tx.ingredient.update({
-                          where: { id: r.ingredientId },
-                          data: { stock: { decrement: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0) } }
-                        });
-                        await tx.inventoryLog.create({
-                          data: {
-                            ingredientId: r.ingredientId,
-                            amount: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0),
-                            type: 'OUT',
-                            reason: `Venta WhatsApp #${finalOrderId}`
-                          }
-                        });
+                  let name = od.customerName || pushName || `WA: ${senderPhone}`;
+                  if (od.customerAddress?.toLowerCase().includes("recoger")) name = `Recoger - ${name.replace(/^Recoger - /, '')}`;
+                  const finalName = String(name || "Cliente WhatsApp").substring(0, 191);
+                  const finalAddress = String(od.customerAddress || "").substring(0, 191) || null;
+                  const finalNotes = String(additionalNotes || "").substring(0, 500) || null;
+                  const userIdValue = Number(user?.id) || 1;
+
+                  if (existing) {
+                    console.log(`[WhatsApp Bot] Updating existing order #${existing.id} for ${senderPhone}`);
+                    // Restore stock for old items
+                    for (const oldItem of existing.items) {
+                      const recipes = await tx.recipe.findMany({
+                        where: { productId: oldItem.productId, sizeName: oldItem.sizeName }
+                      });
+                      for (const recipe of recipes) {
+                        if (recipe.ingredientId) {
+                          await tx.ingredient.update({
+                            where: { id: recipe.ingredientId },
+                            data: { stock: { increment: Number(recipe.quantity) * Number(oldItem.quantity) } }
+                          });
+                        }
                       }
                     }
+                    await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
+                    const updated = await tx.order.update({
+                      where: { id: existing.id },
+                      data: {
+                        customerName: finalName,
+                        customerAddress: finalAddress,
+                        notes: finalNotes,
+                        total: Number(total) || 0,
+                        deliveryFee: Number(od.deliveryFee) || 0,
+                        source: orderSource,
+                        status: "PENDING",
+                        items: { create: validItems },
+                        updatedAt: new Date()
+                      }
+                    });
+                    finalOrderId = updated.id;
+                  } else {
+                    console.log(`[WhatsApp Bot] Creating new order for ${senderPhone}`);
+                    const created = await tx.order.create({
+                      data: {
+                        userId: userIdValue,
+                        customerName: finalName,
+                        customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
+                        customerAddress: finalAddress,
+                        source: orderSource,
+                        status: "PENDING",
+                        total: Number(total) || 0,
+                        deliveryFee: Number(od.deliveryFee) || 0,
+                        notes: finalNotes,
+                        items: { create: validItems }
+                      }
+                    });
+                    finalOrderId = created.id;
+                  }
+                }, {
+                  timeout: 45000
+                });
+
+                // STEP 2: Deduct stock OUTSIDE the main transaction
+                // If this fails, the order is already saved (which is what matters).
+                // Stock discrepancies can be fixed later; lost orders cannot.
+                if (finalOrderId) {
+                  try {
+                    for (const vi of validItems) {
+                      const recs = await prisma.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
+                      for (const r of recs) {
+                        if (r.ingredientId) {
+                          await prisma.ingredient.update({
+                            where: { id: r.ingredientId },
+                            data: { stock: { decrement: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0) } }
+                          });
+                          await prisma.inventoryLog.create({
+                            data: {
+                              ingredientId: r.ingredientId,
+                              amount: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0),
+                              type: 'OUT',
+                              reason: `Venta WhatsApp #${finalOrderId}`
+                            }
+                          });
+                        }
+                      }
+                    }
+                  } catch (stockError: any) {
+                    console.error(`[WhatsApp Bot] ⚠️ Stock deduction failed for order #${finalOrderId} (${senderPhone}), but order was saved:`, stockError.message);
                   }
                 }
-              }, {
-                isolationLevel: 'Serializable',
-                timeout: 30000
-              });
 
-              console.log(`[WhatsApp Bot] Order generated/updated successfully for ${senderPhone}`);
-            } else {
-              console.error(`[WhatsApp Bot] Order generation failed for ${senderPhone} - items Matched: ${validItems.length}/${od.items?.length}, user: ${!!user}`);
-              // Notify admin of failure
-              try {
-                await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[🚨 ERROR CRÍTICO]\nSe confirmó pedido a ${senderPhone} pero falló la creación en DB.\nProductos detectados: ${validItems.length} de ${od.items?.length}\nRevisar consola y manual.`);
-              } catch (e) { }
+                orderCreatedSuccessfully = true;
+                console.log(`[WhatsApp Bot] ✅ Order #${finalOrderId} created/updated for ${senderPhone}`);
+                break; // Exit retry loop on success
+              } catch (dbError: any) {
+                console.error(`[WhatsApp Bot] ❌ DB attempt ${dbRetries + 1}/3 FAILED for ${senderPhone}:`, dbError.message);
+                if (dbRetries < 2) {
+                  await new Promise(r => setTimeout(r, 1500 * (dbRetries + 1)));
+                } else {
+                  orderCreatedSuccessfully = false;
+                  console.error(`[WhatsApp Bot] ❌ All 3 database retries failed. The order could not be saved to DB for ${senderPhone}. Error: ${dbError.message}`);
+                }
+              }
+              } // end retry loop
+            }
+
+            // Whether DB succeeded or failed, the customer always gets their confirmation.
+            if (!orderCreatedSuccessfully) {
+              console.error(`[WhatsApp Bot] Order failed but sending confirmation to client anyway to protect UX. Contact: ${senderPhone}`);
             }
           }
+
+          // =====================================================================
+          // SEND THE REPLY (for all intents: chat, successful order, send_menu)
+          // At this point, if intent was "order" and failed, replyText has been
+          // replaced with an error message above.
+          // =====================================================================
+          if (geminiResponse.intent === "send_menu") {
+            await sendWhatsAppMedia(remoteJid, undefined, geminiResponse.replyText);
+          }
+          else {
+            const textToSplit = geminiResponse.replyText || "";
+            const messageChunks = textToSplit.split("\n\n").map((c: string) => c.trim()).filter((c: string) => c.length > 0);
+
+            for (let i = 0; i < messageChunks.length; i++) {
+              await sendWhatsAppMessage(remoteJid, messageChunks[i]);
+
+              if (i < messageChunks.length - 1) {
+                const chunkDelay = Math.floor(Math.random() * 2500) + 1000;
+                console.log(`[WhatsApp Bot] Fragmentation delay: waiting ${chunkDelay}ms before next chunk for ${senderPhone}`);
+                await new Promise(r => setTimeout(r, chunkDelay));
+                await sendTypingIndicator(remoteJid, chunkDelay + 800);
+
+                const intraChunkBuffer = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone } });
+                if (intraChunkBuffer.some((b: any) => !itemIds.includes(b.id))) {
+                  console.log(`[WhatsApp Bot] User replied between chunks for ${senderPhone}. Stopping current response to regroup.`);
+                  break;
+                }
+              }
+            }
+          }
+
+          // Update global reply timestamp
+          lastGlobalReplyTime = Date.now();
+
+          // --- FINAL HISTORY COMMIT ---
+          const finalHistoryToSave = JSON.parse(JSON.stringify([...preliminaryHistoryWithCurrentUserMessage, { role: "model", text: JSON.stringify(geminiResponse) }].slice(-50)));
+          await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { history: finalHistoryToSave, updatedAt: new Date() } });
         }
         loops++;
         // Delete the messages from buffer after successful processing of the loop iteration
