@@ -163,6 +163,87 @@ function getPanicRejectionMessage(): string {
 }
 
 /**
+ * Emula la respuesta JSON que devolvería Gemini para las pruebas unitarias locales.
+ */
+function helperGetMockedGeminiResponse(messageText: string, hasImage: boolean): any {
+  const normalized = messageText.toLowerCase();
+
+  // Test 1: Pedido normal
+  if (normalized.includes("arroz de la casa") && normalized.includes("cristal")) {
+    return {
+      intent: "chat",
+      replyText: "¡Hola! Con gusto tomamos tu pedido de Arroz de la casa Personal. El subtotal es {{SUBTOTAL}}, el domicilio al barrio Cristal es {{DOMICILIO}} y el total de tu orden es {{TOTAL}}. Por favor realiza la transferencia a Nequi y me compartes la captura. 😊",
+      orderData: {
+        customerName: "Cliente Beta",
+        customerAddress: "Barrio Cristal",
+        paymentMethod: "TRANSFER",
+        deliveryFee: 0,
+        items: [
+          { productName: "Arroz de la casa", sizeName: "Personal", quantity: 1 }
+        ]
+      }
+    };
+  }
+
+  // Test 2: Pregunta por camarón
+  if (normalized.includes("camaron")) {
+    return {
+      intent: "chat",
+      replyText: "Sí, nuestro delicioso Arroz de la Casa trae camarón apanado y está increíble. ¿Deseas confirmar tu transferencia?"
+    };
+  }
+
+  // Test 3: Intento de engaño de pago (IA alucina diciendo que el pago está verificado sin imagen)
+  if (normalized.includes("nequi") && normalized.includes("35.000") && !hasImage) {
+    return {
+      intent: "order",
+      replyText: "¡Excelente! He recibido tu transferencia. Tu pedido ya está listo para preparar.",
+      orderData: {
+        customerName: "Cliente Beta",
+        customerAddress: "Barrio Cristal",
+        paymentMethod: "TRANSFER",
+        deliveryFee: 0,
+        items: [
+          { productName: "Arroz de la casa", sizeName: "Personal", quantity: 1 }
+        ]
+      }
+    };
+  }
+
+  // Test 4: Envío real de comprobante
+  if (hasImage) {
+    return {
+      intent: "chat",
+      replyText: "¡Muchas gracias! Ya verifiqué el comprobante de pago de manera correcta. Tu pedido está en preparación y llegará pronto. Subtotal: {{SUBTOTAL}}, domicilio: {{DOMICILIO}}. Total pagado: {{TOTAL}}."
+    };
+  }
+
+  // Test 5: Nuevo pedido con costilla
+  if (normalized.includes("costilla")) {
+    return {
+      intent: "chat",
+      replyText: "¡Claro que sí! Con todo gusto. Agregamos el Arroz Chino con Costilla Duo por valor de {{SUBTOTAL}}. El domicilio sigue en {{DOMICILIO}} y el total de la orden con ambos platos es {{TOTAL}}. Por favor indícame si deseas confirmarlo.",
+      orderData: {
+        customerName: "Cliente Beta",
+        customerAddress: "Barrio Cristal",
+        paymentMethod: "TRANSFER",
+        deliveryFee: 0,
+        items: [
+          { productName: "Arroz de la casa", sizeName: "Personal", quantity: 1 },
+          { productName: "Arroz con Costilla", sizeName: "Duo", quantity: 1 }
+        ]
+      }
+    };
+  }
+
+  // Fallback por defecto si no coincide con las pruebas
+  return {
+    intent: "chat",
+    replyText: "Hola, ¿en qué te puedo colaborar hoy?"
+  };
+}
+
+/**
  * GET /api/whatsapp
  */
 export async function GET(req: Request) {
@@ -638,13 +719,16 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         const fallbackModels = ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-pro"];
         let geminiResponse: any = null;
 
-        // === LOCAL RESPONSE: Panic & Audio bypass Gemini entirely ===
+        // === LOCAL RESPONSE: Panic, Audio & Mock bypass Gemini entirely ===
         if (globalSettings?.isPanicModeActive) {
           console.log(`[WhatsApp Bot] PANIC MODE: Generating local rejection for ${senderPhone}. Gemini call SKIPPED.`);
           geminiResponse = {
             intent: "chat",
             replyText: getPanicRejectionMessage()
           };
+        } else if (process.env.MOCK_GEMINI === "true") {
+          console.log(`[WhatsApp Bot] MOCK MODE ACTIVE: Generating simulated Gemini response for user query.`);
+          geminiResponse = helperGetMockedGeminiResponse(currentBatchUserText, hasImageInBatch);
         } else if (hasAudioInBatch) {
           console.log(`[WhatsApp Bot] Audio message detected in batch for ${senderPhone}. Generating local audio rejection response.`);
           geminiResponse = {
@@ -749,12 +833,12 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
           // Rebuild orderData from history if Gemini confirms a payment but uses "chat" intent without repeating items.
           const isConfirmingPayment = (
-            /comprobante.*(recibido|confirmado|aprobado|correcto|verificado|listo|ok)/i.test(geminiResponse.replyText || "") ||
-            /transferencia.*(recibida|confirmada|aprobada|correcta|verificada|ok|exitosa)/i.test(geminiResponse.replyText || "") ||
-            /pago.*(recibido|confirmado|verificado|aprobado|exitoso)/i.test(geminiResponse.replyText || "") ||
-            /recibido.*(comprobante|pago|transferencia)/i.test(geminiResponse.replyText || "") ||
-            /pedido.*(confirmado|listo para preparar)/i.test(geminiResponse.replyText || "") ||
-            /pago.*exitoso/i.test(geminiResponse.replyText || "")
+            /comprobante.*(recibid[oa]|confirmad[oa]|aprobad[oa]|correct[oa]|verificad[oa]|verifiqu[eé]|list[oa]|ok)/i.test(geminiResponse.replyText || "") ||
+            /transferencia.*(recibid[oa]|confirmad[oa]|aprobad[oa]|correct[oa]|verificad[oa]|ok|exitos[oa])/i.test(geminiResponse.replyText || "") ||
+            /pago.*(recibid[oa]|confirmad[oa]|verificad[oa]|aprobad[oa]|exitos[oa]|verifiqu[eé])/i.test(geminiResponse.replyText || "") ||
+            /(recibid[oa]|confirmad[oa]|verificad[oa]|aprobad[oa]).*(comprobante|pago|transferencia)/i.test(geminiResponse.replyText || "") ||
+            /pedido.*(confirmad[oa]|list[oa] para preparar)/i.test(geminiResponse.replyText || "") ||
+            /pago.*exitos[oa]/i.test(geminiResponse.replyText || "")
           );
 
           // ⚠️ SAFEGUARD 1: Detect and BLOCK false/hallucinated payment confirmations if NO image has been sent

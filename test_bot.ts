@@ -1,3 +1,4 @@
+process.env.MOCK_GEMINI = "true";
 import { POST } from './src/app/api/whatsapp/route';
 import prisma from './src/lib/prisma';
 
@@ -16,24 +17,18 @@ async function runTest(messageText: string, hasMedia: boolean = false) {
   const payload = {
     data: {
       key: { remoteJid: '573000000000@s.whatsapp.net', fromMe: false, id: 'TEST_' + Date.now() },
-      message: {
+      message: hasMedia ? {
+        imageMessage: {
+          caption: messageText,
+          mimetype: 'image/jpeg'
+        }
+      } : {
         conversation: messageText
       },
-      pushName: 'Cliente Beta'
+      pushName: 'Cliente Beta',
+      base64: hasMedia ? 'MOCK_BASE64_FOR_TESTS' : undefined
     }
   };
-
-  if (hasMedia) {
-    // Simular que el buffer tiene una imagen
-    await (prisma as any).whatsAppMessageBuffer.create({
-      data: {
-        phone: '573000000000',
-        content: messageText,
-        mimeType: 'image/jpeg',
-        base64: 'BASE64_MOCK_DATA'
-      }
-    });
-  }
 
   const req = new Request('http://localhost/api/whatsapp', {
     method: 'POST',
