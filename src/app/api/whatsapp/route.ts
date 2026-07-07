@@ -18,6 +18,34 @@ function normalizeString(str: string): string {
 }
 
 /**
+ * Returns the exact delivery fee based on neighborhood / address.
+ */
+function getDeliveryFeeByAddress(address: string | null | undefined): number {
+  if (!address) return 6000;
+  const normalized = normalizeString(address);
+  if (normalized.includes("recoger") || normalized.includes("local") || normalized.includes("lleva") || normalized.includes("retirar") || normalized.includes("paso por el")) {
+    return 0;
+  }
+
+  // Precios por zonas
+  const tier4 = ["rockefeller", "modelo", "maeugenia", "bellavista", "tamarindo", "juan 23", "porvenir", "eucaristico", "14 julio", "14 de julio"];
+  const tier5 = ["cristal", "oriente", "transformadora", "galeon", "miraflores", "masamorra", "san luis", "kennedy", "el 5", "el cinco"];
+  const tier6 = ["marina", "r9", "laureles", "inmaculada", "ciudadela 1", "ciudadela 2", "campin", "kilometro 5", "km 5", "centro"];
+  const tier7 = ["ciudadela 3", "ciudadela 4", "pino", "12 abril", "12 de abril", "independencia", "bolivar", "grancolombia", "santa cruz", "isla", "cascajal"];
+  const tier8 = ["exito", "triunfo", "nueva grana", "brisas"];
+  const tier9 = ["colinas"];
+
+  if (tier4.some(b => normalized.includes(b))) return 4000;
+  if (tier5.some(b => normalized.includes(b))) return 5000;
+  if (tier6.some(b => normalized.includes(b))) return 6000;
+  if (tier7.some(b => normalized.includes(b))) return 7000;
+  if (tier8.some(b => normalized.includes(b))) return 8000;
+  if (tier9.some(b => normalized.includes(b))) return 9000;
+
+  return 6000; // Barrio desconocido por defecto
+}
+
+/**
  * Generates a randomized response to notify the user that audio messages are not supported.
  * Highly varied to prevent WhatsApp spam reporting.
  */
@@ -86,6 +114,54 @@ const PANIC_COOLDOWN_PER_USER = 1000 * 60 * 5; // 5 minutes ignore if too many m
 const PANIC_MAX_USER_REPLIES = 3; // Max replies to same user in panic mode window
 const userPanicReplies: Record<string, { count: number, lastTime: number }> = {};
 
+// Normal mode per-user rate limiter (anti-abuse)
+const userMessageTimestamps: Record<string, number[]> = {};
+const NORMAL_MAX_MESSAGES_PER_WINDOW = 8; // Max messages per user in window
+const NORMAL_RATE_WINDOW = 2 * 60 * 1000; // 2-minute sliding window
+
+/**
+ * Generates a randomized panic mode rejection without calling Gemini.
+ * Each call produces a unique combination to avoid WhatsApp spam detection.
+ */
+function getPanicRejectionMessage(): string {
+  const intros = [
+    "Hola!", "Hey!", "Buenas!", "Hola, qué tal!", "Hola 🙌",
+    "Saluditos!", "Qué más!", "Buenas buenas!", "Hola hola!",
+    "Ey, buenas!", "Qué hubo!", "Holaaa"
+  ];
+  const reasons = [
+    "estamos pausados por alta demanda",
+    "ahorita estamos al máximo de capacidad",
+    "estamos a tope en estos momentos",
+    "la cocina está full en este momento",
+    "estamos colapsaditos en este momento",
+    "justo ahora pausamos pedidos temporalmente",
+    "estamos sacando muchos pedidos y no damos abasto",
+    "estamos saturados de pedidos ahorita",
+    "tenemos la cocina a reventar",
+    "por ahora estamos sin capacidad de recibir más pedidos"
+  ];
+  const closings = [
+    "Apenas abramos te aviso.",
+    "En un rato reactivamos, estate pendiente.",
+    "Dame un ratico y te confirmo cuando volvamos.",
+    "Prueba más tardecito.",
+    "Intentá en unos minuticos.",
+    "No demora mucho, te aviso cuando volvamos.",
+    "Apenas respiremos te atiendo con gusto.",
+    "Te recomiendo intentar en unos 30-40 minutos.",
+    "Vuelve a escribirnos más tardecito.",
+    "Quedo atento para cuando abramos de nuevo."
+  ];
+  const emojis = [" 😅", " 🙏", " 🍳", " 😊", " 🫶", " 💪", " ✌️", ""];
+
+  const i = intros[Math.floor(Math.random() * intros.length)];
+  const r = reasons[Math.floor(Math.random() * reasons.length)];
+  const c = closings[Math.floor(Math.random() * closings.length)];
+  const e = emojis[Math.floor(Math.random() * emojis.length)];
+  return `${i} ${r}${e} ${c}`;
+}
+
 /**
  * GET /api/whatsapp
  */
@@ -114,6 +190,12 @@ export async function POST(req: Request) {
     if (!data || !data.message) return NextResponse.json({ received: true });
 
     remoteJid = data.key.remoteJid;
+
+    // === ANTI-SPAM: Ignore group messages entirely ===
+    if (remoteJid?.endsWith("@g.us")) {
+      return NextResponse.json({ received: true });
+    }
+
     const rawPhone = remoteJid?.replace(/@s.whatsapp.net|@g.us/, "");
     senderPhone = normalizarNumero(rawPhone);
     pushName = data.pushName || "";
@@ -247,6 +329,17 @@ export async function POST(req: Request) {
 
         const bufferItems = await (prisma as any).whatsAppMessageBuffer.findMany({ where: { phone: senderPhone }, orderBy: { createdAt: 'asc' } });
         if (bufferItems.length === 0) break;
+
+        // === ANTI-SPAM: Per-user rate limit in Normal Mode ===
+        const nowRL = Date.now();
+        if (!userMessageTimestamps[senderPhone]) userMessageTimestamps[senderPhone] = [];
+        userMessageTimestamps[senderPhone] = userMessageTimestamps[senderPhone].filter(t => nowRL - t < NORMAL_RATE_WINDOW);
+        userMessageTimestamps[senderPhone].push(nowRL);
+        if (userMessageTimestamps[senderPhone].length > NORMAL_MAX_MESSAGES_PER_WINDOW) {
+          console.warn(`[WhatsApp Bot] RATE LIMIT: User ${senderPhone} exceeded ${NORMAL_MAX_MESSAGES_PER_WINDOW} messages in ${NORMAL_RATE_WINDOW / 1000}s. Clearing buffer and pausing.`);
+          await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: bufferItems.map((i: any) => i.id) } } });
+          break;
+        }
 
         // Collect IDs to delete
         const itemIds = bufferItems.map((i: any) => i.id);
@@ -421,7 +514,7 @@ Estilo con sugerencia de hora:
         }
 
         if (globalSettings?.isPickupOnlyActive) {
-          timeStatus += "\n⚠️ AVISO CRÍTICO (MODO RECOGER ACTIVO): Actualmente SOLO aceptamos pedidos para RECOGER en el local. NO HAY DOMICILIOS bajo ninguna circunstancia. Debes INTEGRAR este aviso de forma natural y VARIADA en tu respuesta. NUNCA uses la misma frase dos veces.";
+          timeStatus += "\n⚠️ AVISO CRÍTICO (MODO RECOGER ACTIVO): Actualmente SOLO aceptamos pedidos para RECOGER en el local. NO HAY DOMICILIOS bajo ninguna circunstancia.";
         }
 
         const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Calle 6 #39A-06 Entrada del barrio Rockefeller, Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.${timeStatus}
@@ -447,11 +540,15 @@ PRECIOS DE DOMICILIO POR BARRIO:
 - Duo: Para 2 personas.
 - Familiar: Para 4-5 personas.
 - Super familiar: Para 6-7 personas.
-CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
- - Suma el precio de CADA producto según su tamaño + costo de domicilio.
- - **BARRIO DESCONOCIDO**: Si el cliente menciona un barrio que NO ESTÁ en la lista superior, usa un costo de domicilio estándar de $6.000. NO digas "Ya te confirmamos cuanto es", simplemente procede con el pedido usando ese valor.
- - **COSTO MANUAL (IMPORTANTE)**: Revisa el historial de mensajes. Si ves que un humano (model) envió un mensaje que es simplemente un número (ej: "5500") después de que preguntaras por un barrio desconocido, interpreta ese número como el 'deliveryFee' para ese pedido y procede.
- - El TOTAL final que menciones debe ser la suma EXACTA de (Productos + Domicilio). Si es recoger, el total es solo el de los productos ($0 domicilio).
+
+CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
+  - **REGLA ABSOLUTA DE VALORES**: NUNCA calcules sumas de dinero o precios finales tú mismo en la respuesta textual (replyText). DEBES usar obligatoriamente los placeholders:
+    * Use {{SUBTOTAL}} para referirte a la suma del precio de los productos.
+    * Use {{DOMICILIO}} para referirte al costo del domicilio del barrio.
+    * Use {{TOTAL}} para referirte al total integral (comida + domicilio).
+    * EJEMPLO: "Dale, el valor de los platos es de {{SUBTOTAL}} más {{DOMICILIO}} del domicilio, para un total de {{TOTAL}}."
+  - **BARRIO DESCONOCIDO**: Si el cliente menciona un barrio que NO ESTÁ en la lista superior, el backend calculará automáticamente $6.000 para {{DOMICILIO}}. No te preocupes por inventar el costo.
+  - El TOTAL verdadero será calculado dinámicamente por la base de datos sumando (Productos + Domicilio).
 
 1. **BREVEDAD EXTREMA PARA CONFIRMACIONES**: 
    - Puedes ser natural y amable (pero sin excederte) si el cliente pide info del menú o precios.
@@ -480,7 +577,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
    - $8.000: Éxito, Triunfo, Nueva Grana, Brisas.
    - $9.000: Colinas C.
 5. **RECOLECCIÓN DE DATOS**: Pide solo lo que falte. Para domicilios: Nombre, Dirección/Barrio, Pago. SI EL PEDIDO ES PARA RECOGER: NUNCA PIDAS DIRECCIÓN NI BARRIO, SOLO Nombre y Pago. IMPORTANTE PARA DOMICILIOS: NUNCA des el total a pagar ni los datos de transferencia sin saber primero la dirección/barrio. Si faltan VARIOS datos, PÍDELOS TODOS JUNTOS en una sola respuesta amigable.
-6. **TRANSFERENCIA**: SOLO cuando YA SEPAS la dirección/barrio (o si es para recoger), da el total resumido y los datos (ej: "El total es $X. Transfiere a Nequi 3173941189 o llave (Aunque tengas que variar la forma de decirlo siempre se llamará llave y nequi) @NEQUILUI57354 y envíame la imagen"). Mantenlo BREVE y VARÍA tus palabras cada vez que lo pidas para evitar bloqueos de WhatsApp. Pide la imagen ANTES DE GENERAR LA ORDEN.
+6. **TRANSFERENCIA**: SOLO cuando YA SEPAS la dirección/barrio (o si es para recoger), da el total resumido usando placeholders y los datos (ej: "El total es {{TOTAL}} ({{SUBTOTAL}} del pedido + {{DOMICILIO}} domicilio). Transfiere a Nequi 3173941189 o llave @NEQUILUI57354 y envíame la imagen"). Mantenlo BREVE y VARÍA tus palabras cada vez que lo pidas para evitar bloqueos de WhatsApp. Pide la imagen ANTES DE GENERAR LA ORDEN.
 7. **VALIDACIÓN DE COMPROBANTE (OBLIGATORIO)**: Cuando envíen la imagen, DEBES verificar visualmente en la captura:
    - **NÚMERO DE DESTINO**: Debe ser obligatoriamente el **3173941189**.
    - **FECHA**: Debe ser la fecha de HOY (${currentDate}).
@@ -490,19 +587,20 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS:
 9. **ANTI-HALLUCINATION**: Si no hay etiqueta "[Imagen...]", NO confirmes nada.
 10. **AUDIOS**: Indica que solo texto, breve.
 11. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
-12. **ENVÍO DE MENÚ ("send_menu")**: Si el cliente pide el menú y decides usar el intent "send_menu", el sistema adjuntará AUTOMÁTICAMENTE una imagen bonita del menú. Por lo tanto, bajo NINGUNA CIRCUNSTANCIA escribas los platos o precios en el 'replyText'. Tu 'replyText' debe ser únicamente una frase corta como: "¡Claro! Aquí te comparto nuestro menú 👇".
-13. **RESTRICCIÓN DE ORDEN**: NUNCA uses el intent "order" si faltan datos obligatorios para el pedido (Nombre, Dirección/Barrio exacto SI ES DOMICILIO, definición clara de los productos y tamaños, o la confirmación/imagen de pago según corresponda). Si falta CUALQUIER DATO, usa "chat" y averigua la información faltante ANTES de confirmar la orden.
+12. **ENVÍO DE MENÚ ("send_menu")**: Si el cliente pide el menú y decides usar el intent "send_menu", el sistema adjuntará AUTOMÁTICAMENTE una imagen bonita del menú. Por lo tanto, bajo NINGUNA CIRCUNSTANCIA escribas los platos o precios in the 'replyText'. Tu 'replyText' debe ser únicamente una frase corta como: "¡Claro! Aquí te comparto nuestro menú 👇".
+13. **RESTRICCIÓN DE ORDEN**: NUNCA uses el intent "order" si faltan datos obligatorios para el pedido (Nombre, Dirección/Barrio exacto SI ES DOMICILIO, definición clara de los productos y tamaños, o la confirmación/imagen de pago según corresponda). Si falta CUALQUIER DATO o aún no se ha confirmado el pago/entrega, usa el intent "chat".
 14. **PAGOS AISLADOS (PEDIDOS EXTERNOS)**: Si un cliente envía un comprobante de pago (imagen) junto con un texto corto (ej. "pago pedido Ruth", "transferencia comprobada") y NO hace un pedido explícito de comida en ese mensaje, significa que el pedido ya se tomó por teléfono o en persona. Tu única respuesta debe ser: "Transferencia comprobada. ✅" (intent: "chat"). NUNCA preguntes qué pidieron ni a dónde se envía, asume que ya tenemos esos datos.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
   "intent": "chat" | "order" | "send_menu",
-  "replyText": "Respuesta EXTREMADAMENTE CORTA, concisa y directa. NADA DE REPETICIONES. Usa pocas palabras.",
-  "orderData": {    // SÓLO si intent es "order"
+  "replyText": "Respuesta al cliente. Recuerda usar {{SUBTOTAL}}, {{DOMICILIO}} y {{TOTAL}} para cotizar y evitar escribir valores absolutos calculados por ti.",
+  "orderData": {    // Incluye este objeto SIEMPRE que detectes intenciones de compra o cotización, incluso si el intent de la respuesta superior es "chat".
     "customerName": "...",
     "customerAddress": "...",
     "customerPhone": "...",
-    "deliveryFee": 3000, 
+    "paymentMethod": "CASH" | "TRANSFER", // CASH para contraentrega/efectivo, TRANSFER para Nequi/transferencia
+    "deliveryFee": 0, // deja en 0, el servidor lo calculará
     "notes": "...",
     "items": [
       { "productName": "NOMBRE EXACTO SEGÚN EL INVENTARIO", "sizeName": "...", "quantity": 1, "notes": "..." }
@@ -540,7 +638,14 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         const fallbackModels = ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-pro"];
         let geminiResponse: any = null;
 
-        if (hasAudioInBatch) {
+        // === LOCAL RESPONSE: Panic & Audio bypass Gemini entirely ===
+        if (globalSettings?.isPanicModeActive) {
+          console.log(`[WhatsApp Bot] PANIC MODE: Generating local rejection for ${senderPhone}. Gemini call SKIPPED.`);
+          geminiResponse = {
+            intent: "chat",
+            replyText: getPanicRejectionMessage()
+          };
+        } else if (hasAudioInBatch) {
           console.log(`[WhatsApp Bot] Audio message detected in batch for ${senderPhone}. Generating local audio rejection response.`);
           geminiResponse = {
             intent: "chat",
@@ -797,6 +902,20 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               }
               const orderSource = (globalSettings?.isPickupOnlyActive || od.customerAddress?.toLowerCase().includes("recoger") || !od.customerAddress) ? "TAKEAWAY" : "DELIVERY";
 
+              // === SERVER-SIDE CALCULATION: Override AI values with real DB-based values ===
+              const calculatedDeliveryFee = (orderSource === "TAKEAWAY") ? 0 : getDeliveryFeeByAddress(od.customerAddress || "");
+              od.deliveryFee = calculatedDeliveryFee;
+              const subtotal = total; // 'total' at this point = sum of matched product prices from DB
+              const grandTotal = subtotal + calculatedDeliveryFee;
+              const formatCOP = (n: number) => `$${n.toLocaleString('es-CO')}`;
+              if (geminiResponse.replyText) {
+                geminiResponse.replyText = geminiResponse.replyText
+                  .replace(/\{\{SUBTOTAL\}\}/g, formatCOP(subtotal))
+                  .replace(/\{\{DOMICILIO\}\}/g, formatCOP(calculatedDeliveryFee))
+                  .replace(/\{\{TOTAL\}\}/g, formatCOP(grandTotal));
+              }
+              console.log(`[WhatsApp Bot] Server-side calc for ${senderPhone}: subtotal=${subtotal}, delivery=${calculatedDeliveryFee}, grand=${grandTotal}`);
+
               let finalOrderId: number | null = null;
               for (let dbRetries = 0; dbRetries < 3; dbRetries++) {
               try {
@@ -924,6 +1043,35 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             if (!orderCreatedSuccessfully) {
               console.error(`[WhatsApp Bot] Order failed but sending confirmation to client anyway to protect UX. Contact: ${senderPhone}`);
             }
+          }
+
+          // === PLACEHOLDER REPLACEMENT FOR NON-ORDER RESPONSES (e.g. quoting prices in chat) ===
+          if (geminiResponse.replyText && /\{\{(SUBTOTAL|DOMICILIO|TOTAL)\}\}/.test(geminiResponse.replyText)) {
+            const chatOd = geminiResponse.orderData;
+            let chatSubtotal = 0;
+            if (chatOd?.items?.length > 0) {
+              for (const chatItem of chatOd.items) {
+                const inputName = normalizeString(chatItem.productName || "");
+                const prod = products.find((p: any) => {
+                  const pn = normalizeString(p.name);
+                  return pn === inputName || pn.includes(inputName) || inputName.includes(pn);
+                });
+                if (prod && prod.sizes && prod.sizes.length > 0) {
+                  const sz = prod.sizes.find((s: any) => normalizeString(s.name) === normalizeString(chatItem.sizeName || "")) || prod.sizes[0];
+                  chatSubtotal += (Number(sz?.price) || 0) * Math.max(1, Number(chatItem.quantity) || 1);
+                }
+              }
+            }
+            const chatDeliveryFee = (!chatOd?.customerAddress || chatOd.customerAddress.toLowerCase().includes("recoger"))
+              ? 0
+              : getDeliveryFeeByAddress(chatOd.customerAddress || "");
+            const chatTotal = chatSubtotal + chatDeliveryFee;
+            const fmtCOP = (n: number) => `$${n.toLocaleString('es-CO')}`;
+            geminiResponse.replyText = geminiResponse.replyText
+              .replace(/\{\{SUBTOTAL\}\}/g, fmtCOP(chatSubtotal))
+              .replace(/\{\{DOMICILIO\}\}/g, fmtCOP(chatDeliveryFee))
+              .replace(/\{\{TOTAL\}\}/g, fmtCOP(chatTotal));
+            console.log(`[WhatsApp Bot] Chat placeholder replacement for ${senderPhone}: sub=${chatSubtotal}, del=${chatDeliveryFee}, tot=${chatTotal}`);
           }
 
           // =====================================================================
