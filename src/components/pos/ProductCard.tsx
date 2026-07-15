@@ -8,7 +8,8 @@ interface Props {
 }
 
 export function ProductCard({ product, onAdd }: Props) {
-  const [selectedSizeId, setSelectedSizeId] = useState<number>(product.sizes[0]?.id || 0);
+  const defaultSize = product.sizes.find(s => !s.isSoldOut) || product.sizes[0];
+  const [selectedSizeId, setSelectedSizeId] = useState<number>(defaultSize?.id || 0);
 
   const selectedSize = product.sizes.find(s => s.id === selectedSizeId) || product.sizes[0];
 
@@ -42,10 +43,13 @@ export function ProductCard({ product, onAdd }: Props) {
             <button
               key={size.id}
               onClick={() => setSelectedSizeId(size.id)}
-              className={`flex-1 min-w-[70px] px-3 py-2.5 lg:py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${selectedSizeId === size.id
-                  ? "bg-zinc-900 border-zinc-900 text-white shadow-lg shadow-zinc-900/20"
-                  : "bg-zinc-50 border-zinc-100 text-zinc-400 hover:bg-zinc-100 lg:hover:border-zinc-200"
-                }`}
+              className={`flex-1 min-w-[70px] px-3 py-2.5 lg:py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${
+                size.isSoldOut
+                  ? "bg-red-50/50 border-red-100/50 text-red-400 line-through"
+                  : selectedSizeId === size.id
+                    ? "bg-zinc-900 border-zinc-900 text-white shadow-lg shadow-zinc-900/20"
+                    : "bg-zinc-50 border-zinc-100 text-zinc-400 hover:bg-zinc-100 lg:hover:border-zinc-200"
+              }`}
             >
               {size.name}
             </button>
@@ -55,14 +59,21 @@ export function ProductCard({ product, onAdd }: Props) {
         <div className="flex items-center justify-between pt-1">
           <div>
             <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">Precio Unit</p>
-            <p className="text-xl lg:text-2xl font-black text-orange-600 tracking-tighter">
-              ${selectedSize?.price?.toLocaleString() || "0"}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xl lg:text-2xl font-black text-orange-600 tracking-tighter">
+                ${selectedSize?.price?.toLocaleString() || "0"}
+              </p>
+              {selectedSize?.isSoldOut && (
+                <span className="bg-red-50 text-red-650 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded leading-none">
+                  Agotado
+                </span>
+              )}
+            </div>
           </div>
 
           <button
             onClick={() => selectedSize && onAdd(product, selectedSize)}
-            disabled={product.isSoldOut || !selectedSize}
+            disabled={product.isSoldOut || !selectedSize || selectedSize.isSoldOut}
             className="w-14 h-14 lg:w-12 lg:h-12 bg-orange-500 hover:bg-orange-600 active:scale-90 disabled:opacity-50 disabled:active:scale-100 text-white rounded-[20px] flex items-center justify-center transition-all shadow-lg shadow-orange-500/20 group-hover:scale-105"
           >
             <Plus strokeWidth={4} size={24} />

@@ -483,7 +483,7 @@ export async function POST(req: Request) {
         const menuText = products.map((p) =>
           `- ${p.name} (${p.category}):\n` +
           (p.description ? `  Descripción: ${p.description}\n` : "") +
-          p.sizes.map((s) => `  * ${s.name}: $${s.price}`).join('\n')
+          p.sizes.map((s) => `  * ${s.name}: $${s.price}${s.isSoldOut ? " (AGOTADO - NO DISPONIBLE)" : ""}`).join('\n')
         ).join('\n\n');
 
         const currentChat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
@@ -638,13 +638,27 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
    - ⚠️ SEGURIDAD (ANTI-SPAM): Es CRÍTICO que varíes estas confirmaciones cortas. Si a un cliente le dices "Listo", al siguiente dile "Dale" o "Entendido 👍", para evitar bloqueos por respuestas idénticas.
 2. **AISLAMIENTO DE PEDIDO**: Si el bot confirmó orden (intent "order"), ignora platos anteriores. Nuevo mensaje = Pedido Nuevo.
 3. **INVENTARIO Y PRECIOS**: ${menuText}
-3.1. **MAPEO ARROZ CHINO Y CHULETAS**: 
-   - SIEMPRE que pidan "arroz chino", DEBES PREGUNTAR: "¿Lo deseas tradicional, con chuleta o con costilla?".
+3.1. **MAPEO ARROZ CHINO (SOLO APLICA AL ARROZ CHINO, NO A OTROS ARROCES)**: 
+   - SOLO cuando pidan "arroz chino" específicamente, DEBES PREGUNTAR: "¿Lo deseas tradicional, con chuleta o con costilla?".
    - IMPORTANTE: Todas las chuletas que manejamos son de POLLO (no de cerdo). Si el cliente pregunta o tiene dudas sobre la chuleta, aclárale amablemente que es de pollo.
-   - Si dicen con chuleta, el producto exacto es "Arroz con Chuleta" (NO reportes "Arroz Chino" con adición de chuleta).
-   - Si dicen con costilla, el producto exacto es "Arroz con Costilla" (NO reportes "Arroz Chino" con adición de costilla).
-   - Si dicen tradicional o solo -> "Arroz Chino".
+   - Si dicen "arroz chino con chuleta", el producto COMPLETO cambia a "Arroz con Chuleta" (es un plato diferente, NO es arroz chino + adición).
+   - Si dicen "arroz chino con costilla", el producto COMPLETO cambia a "Arroz con Costilla" (es un plato diferente, NO es arroz chino + adición).
+   - Si dicen "arroz chino tradicional" o solo "arroz chino" -> "Arroz Chino".
+   - ⚠️ ESTA REGLA SOLO APLICA cuando el cliente pide "ARROZ CHINO". Para cualquier OTRO arroz (Mixto, Campesino, Ranchero, Thai, etc.), si piden "con adición de chuleta", es una ADICIÓN SEPARADA (ver regla 3.5).
 3.2. **TAMAÑOS**: Si no dicen tamaño, pregunta "¿De qué tamaño?".
+3.5. **ADICIONES (EXTRAS) — REGLA CRÍTICA**:
+   - Una "adición" es un PRODUCTO EXTRA que se agrega AL LADO del plato principal. NO cambia el plato principal.
+   - Los productos de adición disponibles en el inventario son: "Chuleta (Adición)", "Costilla (Adición)", "Camarón (Adición)", "Chicharrón (Adición)", "Chorizo (Adición)", "Papa Francesa (Adición)". Su sizeName SIEMPRE es "Porción".
+   - EJEMPLO CORRECTO: Si el cliente dice "Arroz Mixto Duo con adición de chuleta", debes reportar DOS items separados:
+     items: [
+       { "productName": "Arroz Mixto", "sizeName": "Duo", "quantity": 1 },
+       { "productName": "Chuleta (Adición)", "sizeName": "Porción", "quantity": 1 }
+     ]
+   - EJEMPLO INCORRECTO (PROHIBIDO): NO cambies el arroz por otro producto. "Arroz Mixto Duo con adición de chuleta" NUNCA debe convertirse en "Arroz con Chuleta Familiar" ni en ningún otro producto.
+   - Si el cliente dice "con extra de X", "con adición de X", "agrégale X", "súmale una chuleta", "ponle costilla", etc., es SIEMPRE una adición separada (a menos que sea arroz chino, ver regla 3.1).
+   - El tamaño del plato principal NO cambia por tener adiciones. Si pidió Duo, sigue siendo Duo.
+3.6. **PRODUCTOS O TAMAÑOS AGOTADOS**:
+   - Si un tamaño o producto tiene la indicación "(AGOTADO - NO DISPONIBLE)" al lado de su precio en la lista de inventario, NUNCA lo ofrezcas ni tomes pedidos para ese tamaño o producto. Acláralo amablemente al cliente y ofrécele las variaciones que sí estén disponibles.
 3.4. **RESTRICCIÓN DE TAMAÑO PERSONAL**:
    - ATENCIÓN: El Arroz Mixto, Arroz con Camarones y Arroz Thai ya NO se preparan en tamaño PERSONAL.
    - Si un cliente intenta pedir uno de estos tres platos en Personal, explícale amablemente que, aunque aparezca en la carta física, el restaurante ya no lo maneja en ese tamaño. Sugiere el tamaño DUO en su lugar.
@@ -934,24 +948,64 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             for (const i of od.items) {
               const inputProductName = normalizeString(i.productName || "");
               let p = normalizedProducts.find(x => x.normalizedName === inputProductName);
+
+              // Special handling for "adición" items: map common abbreviations to exact DB names
+              if (!p && (inputProductName.includes("adicion") || inputProductName.includes("extra") || inputProductName.includes("porcion"))) {
+                const additionMappings: Record<string, string> = {
+                  "chuleta": "chuleta (adicion)",
+                  "costilla": "costilla (adicion)",
+                  "camaron": "camaron (adicion)",
+                  "chicharron": "chicharron (adicion)",
+                  "chorizo": "chorizo (adicion)",
+                  "papa": "papa francesa (adicion)",
+                  "papa francesa": "papa francesa (adicion)",
+                  "papas": "papa francesa (adicion)",
+                };
+                for (const [keyword, dbName] of Object.entries(additionMappings)) {
+                  if (inputProductName.includes(keyword)) {
+                    p = normalizedProducts.find(x => x.normalizedName === dbName);
+                    if (p) {
+                      // Force sizeName to "Porción" for all additions
+                      i.sizeName = "Porción";
+                      console.log(`[WhatsApp Bot] Matched addition "${i.productName}" -> "${p.name}" (Porción)`);
+                      break;
+                    }
+                  }
+                }
+              }
+
+              // Fuzzy match ONLY for non-addition items (excludes addition products from fuzzy to avoid confusion)
               if (!p) {
-                p = normalizedProducts.find(x =>
-                  x.normalizedName.includes(inputProductName) ||
-                  inputProductName.includes(x.normalizedName)
-                );
+                p = normalizedProducts.find(x => {
+                  // Prevent fuzzy matching against addition products unless the input explicitly says "adicion"
+                  const isAdditionProduct = x.normalizedName.includes("(adicion)");
+                  if (isAdditionProduct && !inputProductName.includes("adicion")) return false;
+
+                  // Require minimum 6 chars to avoid "chuleta" matching "Arroz con Chuleta"
+                  if (inputProductName.length < 6) return false;
+
+                  return x.normalizedName.includes(inputProductName) ||
+                    inputProductName.includes(x.normalizedName);
+                });
               }
 
               if (p && p.sizes && p.sizes.length > 0) {
                 const inputSizeName = normalizeString(i.sizeName || "");
-                const s = p.sizes.find(z => normalizeString(z.name) === inputSizeName) || p.sizes[0];
+                const s = p.sizes.find(z => normalizeString(z.name) === inputSizeName);
+                if (s && s.isSoldOut) {
+                  console.warn(`[WhatsApp Bot] Rejecting size because it is sold out: ${p.name} (${s.name})`);
+                  unmatchedItems.push(`${i.quantity || 1}x ${p.name} (${s.name}) [AGOTADO]`);
+                  continue;
+                }
+                const finalSize = s || p.sizes.find(z => !z.isSoldOut) || p.sizes[0];
                 validItems.push({
                   productId: p.id,
-                  sizeName: s.name || "Personal",
+                  sizeName: finalSize.name || "Personal",
                   quantity: Math.max(1, Number(i.quantity) || 1),
-                  price: Number(s.price) || 0,
+                  price: Number(finalSize.price) || 0,
                   notes: i.notes || null
                 });
-                total += (Number(s.price) || 0) * (Math.max(1, Number(i.quantity) || 1));
+                total += (Number(finalSize.price) || 0) * (Math.max(1, Number(i.quantity) || 1));
               } else {
                 console.warn(`[WhatsApp Bot] Product not matched: "${i.productName}" for ${senderPhone}`);
                 unmatchedItems.push(`${i.quantity || 1}x ${i.productName || "Producto"} (${i.sizeName || "Familiar"})`);
@@ -1136,13 +1190,37 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             if (chatOd?.items?.length > 0) {
               for (const chatItem of chatOd.items) {
                 const inputName = normalizeString(chatItem.productName || "");
-                const prod = products.find((p: any) => {
-                  const pn = normalizeString(p.name);
-                  return pn === inputName || pn.includes(inputName) || inputName.includes(pn);
-                });
+                let prod: any = products.find((p: any) => normalizeString(p.name) === inputName);
+
+                // Addition mapping for chat pricing
+                if (!prod && (inputName.includes("adicion") || inputName.includes("extra") || inputName.includes("porcion"))) {
+                  const chatAdditionMappings: Record<string, string> = {
+                    "chuleta": "chuleta (adicion)", "costilla": "costilla (adicion)",
+                    "camaron": "camaron (adicion)", "chicharron": "chicharron (adicion)",
+                    "chorizo": "chorizo (adicion)", "papa": "papa francesa (adicion)",
+                    "papas": "papa francesa (adicion)", "papa francesa": "papa francesa (adicion)",
+                  };
+                  for (const [kw, dbN] of Object.entries(chatAdditionMappings)) {
+                    if (inputName.includes(kw)) {
+                      prod = products.find((p: any) => normalizeString(p.name) === dbN);
+                      if (prod) { chatItem.sizeName = "Porción"; break; }
+                    }
+                  }
+                }
+
+                if (!prod) {
+                  prod = products.find((p: any) => {
+                    const pn = normalizeString(p.name);
+                    const isAdd = pn.includes("(adicion)");
+                    if (isAdd && !inputName.includes("adicion")) return false;
+                    if (inputName.length < 6) return false;
+                    return pn.includes(inputName) || inputName.includes(pn);
+                  });
+                }
                 if (prod && prod.sizes && prod.sizes.length > 0) {
-                  const sz = prod.sizes.find((s: any) => normalizeString(s.name) === normalizeString(chatItem.sizeName || "")) || prod.sizes[0];
-                  chatSubtotal += (Number(sz?.price) || 0) * Math.max(1, Number(chatItem.quantity) || 1);
+                  const matchedSz = prod.sizes.find((s: any) => normalizeString(s.name) === normalizeString(chatItem.sizeName || ""));
+                  const finalSz = (matchedSz && !matchedSz.isSoldOut) ? matchedSz : prod.sizes.find((s: any) => !s.isSoldOut) || prod.sizes[0];
+                  chatSubtotal += (Number(finalSz?.price) || 0) * Math.max(1, Number(chatItem.quantity) || 1);
                 }
               }
             }

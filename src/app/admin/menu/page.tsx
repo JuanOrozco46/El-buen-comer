@@ -13,8 +13,10 @@ interface Ingredient {
 }
 
 interface ProductSize {
+  id?: number;
   name: string;
   price: string | number;
+  isSoldOut?: boolean;
 }
 
 interface RecipeItem {
@@ -113,7 +115,7 @@ export default function MenuManagementPage() {
   };
 
   const addSize = () => {
-    setForm({ ...form, sizes: [...form.sizes, { name: "", price: "" }] });
+    setForm({ ...form, sizes: [...form.sizes, { name: "", price: "", isSoldOut: false }] });
   };
 
   const removeSize = (index: number) => {
@@ -139,7 +141,7 @@ export default function MenuManagementPage() {
       name: p.name,
       description: p.description || "",
       category: p.category,
-      sizes: p.sizes.map(s => ({ name: s.name, price: Number(s.price).toString() })),
+      sizes: p.sizes.map(s => ({ name: s.name, price: Number(s.price).toString(), isSoldOut: s.isSoldOut })),
       recipes: p.recipes.map(r => ({ 
         ingredientId: r.ingredientId, 
         sizeName: r.sizeName, 
@@ -176,6 +178,30 @@ export default function MenuManagementPage() {
       }
     } catch (error) {
       console.error("Error toggling product status:", error);
+    }
+  };
+
+  const toggleSizeStatus = async (productId: number, sizeId?: number, currentSoldOut?: boolean) => {
+    if (!sizeId) return;
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: productId, sizeId, sizeIsSoldOut: !currentSoldOut })
+      });
+      if (res.ok) {
+        setProducts(products.map(p => {
+          if (p.id === productId) {
+            return {
+              ...p,
+              sizes: p.sizes.map((s: any) => s.id === sizeId ? { ...s, isSoldOut: !currentSoldOut } : s)
+            };
+          }
+          return p;
+        }));
+      }
+    } catch (error) {
+      console.error("Error toggling size status:", error);
     }
   };
 
@@ -240,10 +266,23 @@ export default function MenuManagementPage() {
                   <div className="mt-auto pt-6 border-t border-zinc-100">
                     <div className="flex flex-wrap gap-2">
                       {product.sizes.map((s: any, i) => (
-                        <div key={i} className="px-4 py-2 bg-zinc-50 rounded-2xl border border-zinc-100">
-                          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">{s.name}</p>
-                          <p className="font-black text-sm text-zinc-900">${Number(s.price).toLocaleString()}</p>
-                        </div>
+                        <button 
+                          key={i}
+                          onClick={() => toggleSizeStatus(product.id, s.id, s.isSoldOut)}
+                          className={`px-4 py-2 rounded-2xl border text-left transition-all ${
+                            s.isSoldOut 
+                              ? "bg-red-50 border-red-200 text-red-650 hover:bg-red-100" 
+                              : "bg-zinc-50 border-zinc-100 text-zinc-900 hover:bg-zinc-100 active:scale-95"
+                          }`}
+                          title={s.isSoldOut ? "Marcar como disponible" : "Marcar como agotado"}
+                        >
+                          <p className={`text-[10px] font-black uppercase tracking-widest leading-none mb-1 ${s.isSoldOut ? "text-red-400" : "text-zinc-400"}`}>
+                            {s.name} {s.isSoldOut && "❌"}
+                          </p>
+                          <p className={`font-black text-sm ${s.isSoldOut ? "line-through text-red-700" : "text-zinc-900"}`}>
+                            ${Number(s.price).toLocaleString()}
+                          </p>
+                        </button>
                       ))}
                     </div>
                     <div className="mt-4 flex items-center gap-2 text-emerald-500 font-bold text-xs uppercase tracking-widest">
@@ -334,6 +373,20 @@ export default function MenuManagementPage() {
                               setForm({...form, sizes: ns});
                             }}
                           />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const ns = [...form.sizes];
+                              ns[idx].isSoldOut = !ns[idx].isSoldOut;
+                              setForm({...form, sizes: ns});
+                            }}
+                            className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+                              size.isSoldOut ? "bg-red-50 text-red-500 hover:bg-red-150" : "bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                            }`}
+                            title={size.isSoldOut ? "Marcar como disponible" : "Marcar como agotado/inactivo"}
+                          >
+                            {size.isSoldOut ? "❌" : "✅"}
+                          </button>
                           {form.sizes.length > 1 && (
                             <button type="button" onClick={() => removeSize(idx)} className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center hover:bg-red-100 transition-all"><Trash2 size={18} /></button>
                           )}

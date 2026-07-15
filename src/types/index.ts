@@ -18,6 +18,7 @@ export interface ProductSize {
   id: number;
   name: string;
   price: number;
+  isSoldOut: boolean;
 }
 
 export interface Product {

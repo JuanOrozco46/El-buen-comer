@@ -56,7 +56,8 @@ export async function POST(req: Request) {
           data: sizes.map((s: any) => ({
             productId: p.id,
             name: s.name,
-            price: Number(s.price)
+            price: Number(s.price),
+            isSoldOut: s.isSoldOut !== undefined ? !!s.isSoldOut : false
           }))
         });
       }
@@ -116,7 +117,8 @@ export async function PUT(req: Request) {
           data: sizes.map((s: any) => ({
             productId: Number(id),
             name: s.name,
-            price: Number(s.price)
+            price: Number(s.price),
+            isSoldOut: s.isSoldOut !== undefined ? !!s.isSoldOut : false
           }))
         });
       }
@@ -150,7 +152,16 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, isActive, isSoldOut } = body;
+    const { id, isActive, isSoldOut, sizeId, sizeIsSoldOut } = body;
+
+    // Direct toggle size status
+    if (sizeId !== undefined) {
+      const updatedSize = await prisma.productSize.update({
+        where: { id: Number(sizeId) },
+        data: { isSoldOut: !!sizeIsSoldOut }
+      });
+      return NextResponse.json(updatedSize);
+    }
 
     const updateData: any = {};
     if (isActive !== undefined) updateData.isActive = isActive;
