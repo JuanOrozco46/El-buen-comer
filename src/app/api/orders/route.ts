@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../../lib/auth";
+import { startOfDay, endOfDay, subDays, startOfWeek, startOfMonth } from "date-fns";
 
 export async function GET(req: Request) {
   try {
@@ -12,6 +13,7 @@ export async function GET(req: Request) {
     const statusFilter = searchParams.get("status");
     const userId = searchParams.get("userId");
     const limit = Number(searchParams.get("limit")) || 50;
+    const range = searchParams.get("range");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
@@ -33,14 +35,48 @@ export async function GET(req: Request) {
       where.status = statusFilter;
     }
 
-    if (from || to) {
-      where.createdAt = {};
-      if (from) where.createdAt.gte = new Date(from);
-      if (to) {
-        const toDate = new Date(to);
-        toDate.setHours(23, 59, 59, 999);
-        where.createdAt.lte = toDate;
+    let start: Date | undefined;
+    let end: Date | undefined;
+
+    if (range && range !== "undefined") {
+      const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
+      switch (range) {
+        case "yesterday":
+          start = startOfDay(subDays(now, 1));
+          end = endOfDay(subDays(now, 1));
+          break;
+        case "week":
+          start = startOfWeek(now, { weekStartsOn: 1 });
+          end = endOfDay(now);
+          break;
+        case "month":
+          start = startOfMonth(now);
+          end = endOfDay(now);
+          break;
+        case "custom":
+          start = from && from !== "undefined" ? startOfDay(new Date(from)) : startOfDay(now);
+          end = to && to !== "undefined" ? endOfDay(new Date(to)) : endOfDay(now);
+          break;
+        default: // "today"
+          start = startOfDay(now);
+          end = endOfDay(now);
+          break;
       }
+    } else if ((from && from !== "undefined") || (to && to !== "undefined")) {
+      if (from && from !== "undefined") {
+        start = new Date(from);
+      }
+      if (to && to !== "undefined") {
+        const toDate = new Date(to);
+        toDate.setUTCHours(23, 59, 59, 999);
+        end = toDate;
+      }
+    }
+
+    if (start || end) {
+      where.createdAt = {};
+      if (start) where.createdAt.gte = start;
+      if (end) where.createdAt.lte = end;
     }
 
     const orders = await prisma.order.findMany({

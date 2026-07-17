@@ -85,22 +85,9 @@ export default function Dashboard() {
   const fetchWaiterOrders = async (waiterId: number) => {
     setLoadingOrders(true);
     try {
-      let url = `/api/orders?userId=${waiterId}`;
+      let url = `/api/orders?userId=${waiterId}&range=${selectedRange}`;
       if (selectedRange === "custom") {
         url += `&from=${customFrom}&to=${customTo}`;
-      } else {
-        // Use existing ranges
-        const now = new Date();
-        let from, to;
-        if (selectedRange === "today") { from = getLocalDate(); to = getLocalDate(); }
-        else if (selectedRange === "yesterday") { 
-          const d = new Date(); d.setDate(d.getDate() - 1);
-          from = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(d);
-          to = from;
-        }
-        // ... simple enough to just use the actual from/to if we were clever, 
-        // but let's just use the selectedRange logic
-        url += `&from=${from}&to=${to}`;
       }
       const res = await fetch(url);
       const data = await res.json();
@@ -111,6 +98,12 @@ export default function Dashboard() {
       setLoadingOrders(false);
     }
   };
+
+  useEffect(() => {
+    if (selectedWaiter) {
+      fetchWaiterOrders(selectedWaiter.id);
+    }
+  }, [selectedRange, customFrom, customTo]);
 
   const handleDeleteOrder = async (orderId: number) => {
     if (!confirm("¿Estás seguro de que deseas ELIMINAR este pedido permanentemente? Esta acción no se puede deshacer y afectará los reportes.")) return;
