@@ -44,11 +44,17 @@ export default function SalesHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState(getLocalDate());
   const [to, setTo] = useState(getLocalDate());
+  const [users, setUsers] = useState<any[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders?from=${from}&to=${to}`);
+      let url = `/api/orders?from=${from}&to=${to}`;
+      if (selectedUserId) {
+        url += `&userId=${selectedUserId}`;
+      }
+      const res = await fetch(url);
       const data = await res.json();
       if (Array.isArray(data)) {
         setOrders(data);
@@ -61,8 +67,23 @@ export default function SalesHistoryPage() {
   };
 
   useEffect(() => {
-    fetchHistory();
+    const fetchUsers = async () => {
+      try {
+        const res = await fetch("/api/users");
+        if (res.ok) {
+          const data = await res.json();
+          setUsers(data);
+        }
+      } catch (err) {
+        console.error("Error fetching users:", err);
+      }
+    };
+    fetchUsers();
   }, []);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [from, to, selectedUserId]);
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 p-4 md:p-8 max-w-7xl mx-auto space-y-8">
@@ -96,6 +117,26 @@ export default function SalesHistoryPage() {
                 className="bg-transparent border-none text-xs font-bold text-zinc-700 focus:ring-0"
              />
           </div>
+
+          <div className="h-6 w-[1px] bg-zinc-200 hidden md:block" />
+
+          {/* Waiter Filter Dropdown */}
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-zinc-200">
+             <User size={14} className="text-zinc-400" />
+             <select
+               value={selectedUserId}
+               onChange={e => setSelectedUserId(e.target.value)}
+               className="bg-transparent border-none text-xs font-bold text-zinc-700 focus:ring-0 cursor-pointer pr-8 py-0 focus:outline-none"
+             >
+               <option value="">Todos los meseros</option>
+               {users.map(u => (
+                 <option key={u.id} value={u.id}>
+                   {u.name} ({u.role === 'ADMIN' ? 'Admin' : u.role === 'CASHIER' ? 'Caja' : 'Mesero'})
+                 </option>
+               ))}
+             </select>
+          </div>
+
           <button 
              onClick={fetchHistory}
              className="bg-zinc-900 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all flex items-center gap-2 shadow-sm"
@@ -125,6 +166,7 @@ export default function SalesHistoryPage() {
                 <tr className="bg-zinc-50 border-b border-zinc-100">
                   <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-500">Fecha / Hora</th>
                   <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-500">Cliente</th>
+                  <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-500">Mesero</th>
                   <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-500">Platos & Detalles</th>
                   <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-500 text-right">Monto</th>
                   <th className="px-6 py-5 text-[10px] font-black uppercase tracking-widest text-zinc-500 text-center">Pago</th>
@@ -153,6 +195,14 @@ export default function SalesHistoryPage() {
                             {order.customerName || `Pedido #${order.id}`}
                           </p>
                        </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <p className="text-xs font-bold text-zinc-700">
+                        {order.user?.name || "WhatsApp Bot"}
+                      </p>
+                      <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                        {order.user?.role || "Sistema"}
+                      </p>
                     </td>
                     <td className="px-6 py-5">
                        <div className="space-y-1.5">
