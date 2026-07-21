@@ -659,6 +659,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
    - El tamaño del plato principal NO cambia por tener adiciones. Si pidió Duo, sigue siendo Duo.
 3.6. **PRODUCTOS O TAMAÑOS AGOTADOS**:
    - Si un tamaño o producto tiene la indicación "(AGOTADO - NO DISPONIBLE)" al lado de su precio en la lista de inventario, NUNCA lo ofrezcas ni tomes pedidos para ese tamaño o producto. Acláralo amablemente al cliente y ofrécele las variaciones que sí estén disponibles.
+   - Hoy 21 de Julio de 2026 el arroz campesino no tendrá costilla hatsta la 12:30 del medio dia, en vez de la costilla se dará más pollo. despues de eso, volvemos a la normalidad VARIA LAS RESPUESTAS.
 3.7. **DESECHABLES / UTENSILIOS PLÁSTICOS GRATUITOS**:
    - Los platos de plástico, vasos de plástico o cubiertos de plástico son COMPLETAMENTE GRATUITOS y NO se cobran.
    - NUNCA los agregues como productos o adiciones dentro de la lista JSON 'orderData.items'.
