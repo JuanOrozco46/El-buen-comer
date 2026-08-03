@@ -659,7 +659,6 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
    - El tamaño del plato principal NO cambia por tener adiciones. Si pidió Duo, sigue siendo Duo.
 3.6. **PRODUCTOS O TAMAÑOS AGOTADOS**:
    - Si un tamaño o producto tiene la indicación "(AGOTADO - NO DISPONIBLE)" al lado de su precio en la lista de inventario, NUNCA lo ofrezcas ni tomes pedidos para ese tamaño o producto. Acláralo amablemente al cliente y ofrécele las variaciones que sí estén disponibles.
-   - Hoy 21 de Julio de 2026 el arroz campesino no tendrá costilla hatsta la 12:30 del medio dia, en vez de la costilla se dará más pollo. despues de eso, volvemos a la normalidad VARIA LAS RESPUESTAS.
 3.7. **DESECHABLES / UTENSILIOS PLÁSTICOS GRATUITOS**:
    - Los platos de plástico, vasos de plástico o cubiertos de plástico son COMPLETAMENTE GRATUITOS y NO se cobran.
    - NUNCA los agregues como productos o adiciones dentro de la lista JSON 'orderData.items'.
@@ -881,10 +880,10 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           // ⚠️ RECOVERY 2: If image IS present, and bot confirms receipt, ensure intent is "order" and pull order data from history
           else if (imagePresent && isConfirmingPayment) {
             console.log(`[WhatsApp Bot] Bot is confirming payment via image for ${senderPhone}. Ensuring intent is 'order'.`);
-            
+
             // Check if current message already contains orderData with items
             const currentHasItems = geminiResponse.orderData && geminiResponse.orderData.items && geminiResponse.orderData.items.length > 0;
-            
+
             if (!currentHasItems) {
               console.log(`[WhatsApp Bot] Current response lacks items. Rescuing order from history...`);
               let lastOrderDataInHistory: any = null;
@@ -898,7 +897,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                       console.log(`[WhatsApp Bot] Rescued orderData from history index ${idx}:`, JSON.stringify(lastOrderDataInHistory));
                       break;
                     }
-                  } catch (e) {}
+                  } catch (e) { }
                 }
               }
 
@@ -1062,124 +1061,124 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
               let finalOrderId: number | null = null;
               for (let dbRetries = 0; dbRetries < 3; dbRetries++) {
-              try {
-                // TRANSACTION 1: Create/Update the Order (the critical part)
-                // Uses ReadCommitted instead of Serializable to avoid deadlocks
-                // when multiple WhatsApp orders arrive simultaneously
-                await prisma.$transaction(async (tx) => {
-                  const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
-                  const existing = await tx.order.findFirst({
-                    where: {
-                      customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
-                      status: { in: ["PENDING", "PREPARING"] },
-                      createdAt: { gte: SIX_HOURS_AGO }
-                    },
-                    include: { items: true },
-                    orderBy: { createdAt: 'desc' }
+                try {
+                  // TRANSACTION 1: Create/Update the Order (the critical part)
+                  // Uses ReadCommitted instead of Serializable to avoid deadlocks
+                  // when multiple WhatsApp orders arrive simultaneously
+                  await prisma.$transaction(async (tx) => {
+                    const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
+                    const existing = await tx.order.findFirst({
+                      where: {
+                        customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
+                        status: { in: ["PENDING", "PREPARING"] },
+                        createdAt: { gte: SIX_HOURS_AGO }
+                      },
+                      include: { items: true },
+                      orderBy: { createdAt: 'desc' }
+                    });
+
+                    let name = od.customerName || pushName || `WA: ${senderPhone}`;
+                    if (od.customerAddress?.toLowerCase().includes("recoger")) name = `Recoger - ${name.replace(/^Recoger - /, '')}`;
+                    const finalName = String(name || "Cliente WhatsApp").substring(0, 191);
+                    const finalAddress = String(od.customerAddress || "").substring(0, 191) || null;
+                    const finalNotes = String(additionalNotes || "").substring(0, 500) || null;
+                    const userIdValue = Number(user?.id) || 1;
+
+                    if (existing) {
+                      console.log(`[WhatsApp Bot] Updating existing order #${existing.id} for ${senderPhone}`);
+                      // Restore stock for old items
+                      for (const oldItem of existing.items) {
+                        const recipes = await tx.recipe.findMany({
+                          where: { productId: oldItem.productId, sizeName: oldItem.sizeName }
+                        });
+                        for (const recipe of recipes) {
+                          if (recipe.ingredientId) {
+                            await tx.ingredient.update({
+                              where: { id: recipe.ingredientId },
+                              data: { stock: { increment: Number(recipe.quantity) * Number(oldItem.quantity) } }
+                            });
+                          }
+                        }
+                      }
+                      await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
+                      const updated = await tx.order.update({
+                        where: { id: existing.id },
+                        data: {
+                          customerName: finalName,
+                          customerAddress: finalAddress,
+                          notes: finalNotes,
+                          total: Number(total) || 0,
+                          deliveryFee: Number(od.deliveryFee) || 0,
+                          source: orderSource,
+                          status: "PENDING",
+                          items: { create: validItems },
+                          updatedAt: new Date()
+                        }
+                      });
+                      finalOrderId = updated.id;
+                    } else {
+                      console.log(`[WhatsApp Bot] Creating new order for ${senderPhone}`);
+                      const created = await tx.order.create({
+                        data: {
+                          userId: userIdValue,
+                          customerName: finalName,
+                          customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
+                          customerAddress: finalAddress,
+                          source: orderSource,
+                          status: "PENDING",
+                          total: Number(total) || 0,
+                          deliveryFee: Number(od.deliveryFee) || 0,
+                          notes: finalNotes,
+                          items: { create: validItems }
+                        }
+                      });
+                      finalOrderId = created.id;
+                    }
+                  }, {
+                    timeout: 45000
                   });
 
-                  let name = od.customerName || pushName || `WA: ${senderPhone}`;
-                  if (od.customerAddress?.toLowerCase().includes("recoger")) name = `Recoger - ${name.replace(/^Recoger - /, '')}`;
-                  const finalName = String(name || "Cliente WhatsApp").substring(0, 191);
-                  const finalAddress = String(od.customerAddress || "").substring(0, 191) || null;
-                  const finalNotes = String(additionalNotes || "").substring(0, 500) || null;
-                  const userIdValue = Number(user?.id) || 1;
-
-                  if (existing) {
-                    console.log(`[WhatsApp Bot] Updating existing order #${existing.id} for ${senderPhone}`);
-                    // Restore stock for old items
-                    for (const oldItem of existing.items) {
-                      const recipes = await tx.recipe.findMany({
-                        where: { productId: oldItem.productId, sizeName: oldItem.sizeName }
-                      });
-                      for (const recipe of recipes) {
-                        if (recipe.ingredientId) {
-                          await tx.ingredient.update({
-                            where: { id: recipe.ingredientId },
-                            data: { stock: { increment: Number(recipe.quantity) * Number(oldItem.quantity) } }
-                          });
+                  // STEP 2: Deduct stock OUTSIDE the main transaction
+                  // If this fails, the order is already saved (which is what matters).
+                  // Stock discrepancies can be fixed later; lost orders cannot.
+                  if (finalOrderId) {
+                    try {
+                      for (const vi of validItems) {
+                        const recs = await prisma.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
+                        for (const r of recs) {
+                          if (r.ingredientId) {
+                            await prisma.ingredient.update({
+                              where: { id: r.ingredientId },
+                              data: { stock: { decrement: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0) } }
+                            });
+                            await prisma.inventoryLog.create({
+                              data: {
+                                ingredientId: r.ingredientId,
+                                amount: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0),
+                                type: 'OUT',
+                                reason: `Venta WhatsApp #${finalOrderId}`
+                              }
+                            });
+                          }
                         }
                       }
+                    } catch (stockError: any) {
+                      console.error(`[WhatsApp Bot] ⚠️ Stock deduction failed for order #${finalOrderId} (${senderPhone}), but order was saved:`, stockError.message);
                     }
-                    await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
-                    const updated = await tx.order.update({
-                      where: { id: existing.id },
-                      data: {
-                        customerName: finalName,
-                        customerAddress: finalAddress,
-                        notes: finalNotes,
-                        total: Number(total) || 0,
-                        deliveryFee: Number(od.deliveryFee) || 0,
-                        source: orderSource,
-                        status: "PENDING",
-                        items: { create: validItems },
-                        updatedAt: new Date()
-                      }
-                    });
-                    finalOrderId = updated.id;
+                  }
+
+                  orderCreatedSuccessfully = true;
+                  console.log(`[WhatsApp Bot] ✅ Order #${finalOrderId} created/updated for ${senderPhone}`);
+                  break; // Exit retry loop on success
+                } catch (dbError: any) {
+                  console.error(`[WhatsApp Bot] ❌ DB attempt ${dbRetries + 1}/3 FAILED for ${senderPhone}:`, dbError.message);
+                  if (dbRetries < 2) {
+                    await new Promise(r => setTimeout(r, 1500 * (dbRetries + 1)));
                   } else {
-                    console.log(`[WhatsApp Bot] Creating new order for ${senderPhone}`);
-                    const created = await tx.order.create({
-                      data: {
-                        userId: userIdValue,
-                        customerName: finalName,
-                        customerPhone: String(lookupPhone || senderPhone || "Desconocido").substring(0, 50),
-                        customerAddress: finalAddress,
-                        source: orderSource,
-                        status: "PENDING",
-                        total: Number(total) || 0,
-                        deliveryFee: Number(od.deliveryFee) || 0,
-                        notes: finalNotes,
-                        items: { create: validItems }
-                      }
-                    });
-                    finalOrderId = created.id;
-                  }
-                }, {
-                  timeout: 45000
-                });
-
-                // STEP 2: Deduct stock OUTSIDE the main transaction
-                // If this fails, the order is already saved (which is what matters).
-                // Stock discrepancies can be fixed later; lost orders cannot.
-                if (finalOrderId) {
-                  try {
-                    for (const vi of validItems) {
-                      const recs = await prisma.recipe.findMany({ where: { productId: vi.productId, sizeName: vi.sizeName } });
-                      for (const r of recs) {
-                        if (r.ingredientId) {
-                          await prisma.ingredient.update({
-                            where: { id: r.ingredientId },
-                            data: { stock: { decrement: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0) } }
-                          });
-                          await prisma.inventoryLog.create({
-                            data: {
-                              ingredientId: r.ingredientId,
-                              amount: (Number(r.quantity) || 0) * (Number(vi.quantity) || 0),
-                              type: 'OUT',
-                              reason: `Venta WhatsApp #${finalOrderId}`
-                            }
-                          });
-                        }
-                      }
-                    }
-                  } catch (stockError: any) {
-                    console.error(`[WhatsApp Bot] ⚠️ Stock deduction failed for order #${finalOrderId} (${senderPhone}), but order was saved:`, stockError.message);
+                    orderCreatedSuccessfully = false;
+                    console.error(`[WhatsApp Bot] ❌ All 3 database retries failed. The order could not be saved to DB for ${senderPhone}. Error: ${dbError.message}`);
                   }
                 }
-
-                orderCreatedSuccessfully = true;
-                console.log(`[WhatsApp Bot] ✅ Order #${finalOrderId} created/updated for ${senderPhone}`);
-                break; // Exit retry loop on success
-              } catch (dbError: any) {
-                console.error(`[WhatsApp Bot] ❌ DB attempt ${dbRetries + 1}/3 FAILED for ${senderPhone}:`, dbError.message);
-                if (dbRetries < 2) {
-                  await new Promise(r => setTimeout(r, 1500 * (dbRetries + 1)));
-                } else {
-                  orderCreatedSuccessfully = false;
-                  console.error(`[WhatsApp Bot] ❌ All 3 database retries failed. The order could not be saved to DB for ${senderPhone}. Error: ${dbError.message}`);
-                }
-              }
               } // end retry loop
             }
 
