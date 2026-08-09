@@ -1190,10 +1190,68 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
           // === PLACEHOLDER REPLACEMENT FOR NON-ORDER RESPONSES (e.g. quoting prices in chat) ===
           if (geminiResponse.replyText && /\{\{(SUBTOTAL|DOMICILIO|TOTAL)\}\}/.test(geminiResponse.replyText)) {
-            const chatOd = geminiResponse.orderData;
+            let chatOd = geminiResponse.orderData;
+
+            // 1. Rescatar orderData del historial si en esta respuesta la IA no lo incluyó o vino sin items
+            if (!chatOd || !chatOd.items || chatOd.items.length === 0) {
+              for (let idx = history.length - 1; idx >= 0; idx--) {
+                const hMsg = history[idx];
+                if (hMsg.role === "model") {
+                  try {
+                    const parsed = JSON.parse(hMsg.text);
+                    if (parsed.orderData && parsed.orderData.items && parsed.orderData.items.length > 0) {
+                      chatOd = parsed.orderData;
+                      break;
+                    }
+                  } catch (e) { }
+                }
+              }
+            }
+
+            // 2. Rescatar la dirección del historial si no está en chatOd
+            let detectedAddress = chatOd?.customerAddress || "";
+            if (!detectedAddress) {
+              for (let idx = history.length - 1; idx >= 0; idx--) {
+                const hMsg = history[idx];
+                if (hMsg.role === "model") {
+                  try {
+                    const parsed = JSON.parse(hMsg.text);
+                    if (parsed.orderData?.customerAddress) {
+                      detectedAddress = parsed.orderData.customerAddress;
+                      break;
+                    }
+                  } catch (e) { }
+                }
+              }
+            }
+
+            // 3. Si aún no tenemos items, escanear el texto del bot y del usuario buscando coincidencias del menú
+            let chatItems: any[] = chatOd?.items ? [...chatOd.items] : [];
+            if (chatItems.length === 0) {
+              const textToScan = normalizeString((geminiResponse.replyText || "") + " " + (aggregatedText || ""));
+              for (const p of products) {
+                const normPName = normalizeString(p.name);
+                if (textToScan.includes(normPName)) {
+                  let detectedSize = "";
+                  for (const s of p.sizes) {
+                    if (textToScan.includes(normalizeString(s.name))) {
+                      detectedSize = s.name;
+                      break;
+                    }
+                  }
+                  chatItems.push({
+                    productName: p.name,
+                    sizeName: detectedSize || (p.sizes[0]?.name || "Personal"),
+                    quantity: 1
+                  });
+                }
+              }
+            }
+
+            // 4. Calcular Subtotal
             let chatSubtotal = 0;
-            if (chatOd?.items?.length > 0) {
-              for (const chatItem of chatOd.items) {
+            if (chatItems.length > 0) {
+              for (const chatItem of chatItems) {
                 const inputName = normalizeString(chatItem.productName || "");
                 let prod: any = products.find((p: any) => normalizeString(p.name) === inputName);
 
@@ -1223,17 +1281,25 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                   });
                 }
                 if (prod && prod.sizes && prod.sizes.length > 0) {
-                  const matchedSz = prod.sizes.find((s: any) => normalizeString(s.name) === normalizeString(chatItem.sizeName || ""));
+                  let searchSizeStr = normalizeString(chatItem.sizeName || "");
+                  if (!searchSizeStr) searchSizeStr = inputName;
+
+                  const matchedSz = prod.sizes.find((s: any) => {
+                    const sNorm = normalizeString(s.name);
+                    return searchSizeStr.includes(sNorm);
+                  });
                   const finalSz = (matchedSz && !matchedSz.isSoldOut) ? matchedSz : prod.sizes.find((s: any) => !s.isSoldOut) || prod.sizes[0];
                   chatSubtotal += (Number(finalSz?.price) || 0) * Math.max(1, Number(chatItem.quantity) || 1);
                 }
               }
             }
-            const chatDeliveryFee = (!chatOd?.customerAddress || chatOd.customerAddress.toLowerCase().includes("recoger"))
-              ? 0
-              : getDeliveryFeeByAddress(chatOd.customerAddress || "");
+
+            // 5. Calcular Domicilio (solo 0 si es explícitamente para recoger)
+            const isPickup = detectedAddress ? Boolean(normalizeString(detectedAddress).match(/(recoger|local|lleva|retirar|paso por el)/)) : false;
+            const chatDeliveryFee = isPickup ? 0 : getDeliveryFeeByAddress(detectedAddress);
             const chatTotal = chatSubtotal + chatDeliveryFee;
             const fmtCOP = (n: number) => `$${n.toLocaleString('es-CO')}`;
+
             geminiResponse.replyText = geminiResponse.replyText
               .replace(/\{\{SUBTOTAL\}\}/g, fmtCOP(chatSubtotal))
               .replace(/\{\{DOMICILIO\}\}/g, fmtCOP(chatDeliveryFee))
