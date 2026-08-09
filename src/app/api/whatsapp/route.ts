@@ -550,7 +550,7 @@ export async function POST(req: Request) {
         });
         console.log(`[WhatsApp Bot] Time Check for ${senderPhone}: ${hStr}:${mStr} (Value: ${timeValue})`);
 
-        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos normalmente de 10:00 AM a 6:30 PM. Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
+        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos de domicilio únicamente de 10:00 AM a 4:00 PM. Los pedidos para recoger en el local se pueden realizar de 10:00 AM a 6:30 PM. Si el cliente pregunta por el horario, debes aclararle que el servicio de domicilio es solo hasta las 4:00 PM y para recoger en el local es hasta las 6:30 PM. Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
         if (globalSettings?.isPanicModeActive) {
           timeStatus = `\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. NO USES EL INTENT ORDER.
 INSTRUCCIONES PARA VARIAR LA RESPUESTA:
@@ -585,13 +585,13 @@ Estilo con sugerencia de hora:
 - IMPORTANTE: Genera una respuesta NUEVA cada vez, variando longitud, tono, uso de emojis y estructura. No repitas patrones.
 - Usa intent "chat" siempre.`;
         } else if (timeValue < 10) {
-          timeStatus = `\n⚠️ ESTADO: PRE-APERTURA (Son las ${hStr}:${mStr}). Atiende pero ACLARA que empezamos a las 10:00 AM.`;
+          timeStatus = `\n⚠️ ESTADO: PRE-APERTURA (Son las ${hStr}:${mStr}). Atiende pero ACLARA que empezamos a las 10:00 AM, explicando que el horario de domicilios es hasta las 4:00 PM y para recoger en el local hasta las 6:30 PM.`;
         } else if (timeValue >= 18.5) {
-          timeStatus = `\n⚠️ ESTADO: CERRADO (Son las ${hStr}:${mStr}). Ya pasaron las 6:30 PM. NO TOMES MÁS PEDIDOS HOY. Dile al cliente que volvemos mañana a las 10 AM.`;
+          timeStatus = `\n⚠️ ESTADO: CERRADO (Son las ${hStr}:${mStr}). Ya pasaron las 6:30 PM. NO TOMES MÁS PEDIDOS HOY. Dile al cliente que ya cerramos y volvemos mañana a las 10 AM. Explica amablemente que el horario de domicilios es hasta las 4:00 PM y para recoger en el local hasta las 6:30 PM.`;
         } else if (timeValue >= 18) {
-          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 6:00 PM. Únicamente pedidos para recoger en local y con PAGO POR TRANSFERENCIA/NEQUI anticipado.`;
+          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 6:00 PM. Únicamente pedidos para recoger en local (se reciben hasta las 6:30 PM) y con PAGO POR TRANSFERENCIA/NEQUI anticipado. Dile explícitamente al cliente que los domicilios finalizaron a las 4:00 PM y ya no están disponibles, pero que aún puede pedir para recoger en el local antes de las 6:30 PM.`;
         } else if (timeValue >= 16) {
-          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 4:00 PM. No hay domicilios disponibles hoy, solo pasar a recoger al local.`;
+          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 4:00 PM. Dile explícitamente al cliente que los domicilios son únicamente hasta las 4:00 PM y ya finalizaron, por lo cual solo se puede pedir para recoger en el local (disponible hasta las 6:30 PM).`;
         }
 
         if (globalSettings?.isPickupOnlyActive) {
