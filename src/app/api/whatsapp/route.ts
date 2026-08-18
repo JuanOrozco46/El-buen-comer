@@ -193,6 +193,14 @@ function helperGetMockedGeminiResponse(messageText: string, hasImage: boolean): 
     };
   }
 
+  // Pregunta por tiempo de espera / demora
+  if (normalized.includes("demora") || normalized.includes("tarda") || normalized.includes("tiempo de espera") || normalized.includes("cuanto se demoran") || normalized.includes("cuanto se demora")) {
+    return {
+      intent: "chat",
+      replyText: "El tiempo estimado de entrega es de Entre 40 y 50 min. 😊"
+    };
+  }
+
   // Test 3: Intento de engaño de pago (IA alucina diciendo que el pago está verificado sin imagen)
   if (normalized.includes("nequi") && normalized.includes("35.000") && !hasImage) {
     return {
@@ -690,6 +698,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
 12. **ENVÍO DE MENÚ ("send_menu")**: Si el cliente pide el menú y decides usar el intent "send_menu", el sistema adjuntará AUTOMÁTICAMENTE una imagen bonita del menú. Por lo tanto, bajo NINGUNA CIRCUNSTANCIA escribas los platos o precios in the 'replyText'. Tu 'replyText' debe ser únicamente una frase corta como: "¡Claro! Aquí te comparto nuestro menú 👇".
 13. **RESTRICCIÓN DE ORDEN**: NUNCA uses el intent "order" si faltan datos obligatorios para el pedido (Nombre, Dirección/Barrio exacto SI ES DOMICILIO, definición clara de los productos y tamaños, o la confirmación/imagen de pago según corresponda). Si falta CUALQUIER DATO o aún no se ha confirmado el pago/entrega, usa el intent "chat".
 14. **PAGOS AISLADOS (PEDIDOS EXTERNOS)**: Si un cliente envía un comprobante de pago (imagen) junto con un texto corto (ej. "pago pedido Ruth", "transferencia comprobada") y NO hace un pedido explícito de comida en ese mensaje, significa que el pedido ya se tomó por teléfono o en persona. Tu única respuesta debe ser: "Transferencia comprobada. ✅" (intent: "chat"). NUNCA preguntes qué pidieron ni a dónde se envía, asume que ya tenemos esos datos.
+15. **TIEMPO DE ESPERA Y DEMORA (SOLO CUANDO EL CLIENTE PREGUNTE)**: Si el cliente pregunta explícitamente cuánto demora el pedido, cuánto se tardan o cuál es el tiempo de espera, indícale amablemente que el tiempo estimado de espera es **Entre 40 y 50 min** (o "entre 40 y 50 minutos"). Recuerda variar la estructura y palabras de tu respuesta para mantener naturalidad y evitar ser bloqueado por repetición.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
