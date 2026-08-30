@@ -197,7 +197,7 @@ function helperGetMockedGeminiResponse(messageText: string, hasImage: boolean): 
   if (normalized.includes("demora") || normalized.includes("tarda") || normalized.includes("tiempo de espera") || normalized.includes("cuanto se demoran") || normalized.includes("cuanto se demora")) {
     return {
       intent: "chat",
-      replyText: "El tiempo estimado de entrega es de Entre 40 y 50 min. 😊"
+      replyText: "El tiempo estimado de entrega tanto para domicilio como para recoger es de entre una hora y una hora y 20. 😊"
     };
   }
 
@@ -691,14 +691,14 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
    - **FECHA**: Debe ser la fecha de HOY (${currentDate}).
    - **MONTO**: Puede ser el total o una parte. Si es una parte, DEBES mencionar brevemente cuánto falta por pagar en efectivo.
    - Si el número de destino es diferente o la fecha es vieja, RECHAZA el pago de inmediato.
-8. **CONFIRMACIÓN FINAL**: Solo si el comprobante es válido (o el pago es contraentrega total - intent "order"), confirma súper BREVEMENTE con una sola oración informando que el pedido llegará en aproximadamente 1 hora (ej. "¡Listo! En una hora llega tu pedido.", "Vale, en una horita te llega."). NUNCA repitas todo el pedido de nuevo y VARÍA siempre la frase para evitar bloqueos por spam.
+8. **CONFIRMACIÓN FINAL**: Solo si el comprobante es válido (o el pago es contraentrega total - intent "order"), confirma súper BREVEMENTE con una sola oración informando que el pedido (ya sea para domicilio o para recoger) tomará entre una hora y una hora y 20 (ej. "¡Listo! En entre una hora y una hora y 20 llega tu pedido.", "Vale, tu pedido para recoger/domicilio estará en entre una hora y una hora y 20."). NUNCA repitas todo el pedido de nuevo y VARÍA siempre la frase para evitar bloqueos por spam.
 9. **ANTI-HALLUCINATION**: Si no hay etiqueta "[Imagen...]", NO confirmes nada.
 10. **AUDIOS**: Indica que solo texto, breve.
 11. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
 12. **ENVÍO DE MENÚ ("send_menu")**: Si el cliente pide el menú y decides usar el intent "send_menu", el sistema adjuntará AUTOMÁTICAMENTE una imagen bonita del menú. Por lo tanto, bajo NINGUNA CIRCUNSTANCIA escribas los platos o precios in the 'replyText'. Tu 'replyText' debe ser únicamente una frase corta como: "¡Claro! Aquí te comparto nuestro menú 👇".
 13. **RESTRICCIÓN DE ORDEN**: NUNCA uses el intent "order" si faltan datos obligatorios para el pedido (Nombre, Dirección/Barrio exacto SI ES DOMICILIO, definición clara de los productos y tamaños, o la confirmación/imagen de pago según corresponda). Si falta CUALQUIER DATO o aún no se ha confirmado el pago/entrega, usa el intent "chat".
 14. **PAGOS AISLADOS (PEDIDOS EXTERNOS)**: Si un cliente envía un comprobante de pago (imagen) junto con un texto corto (ej. "pago pedido Ruth", "transferencia comprobada") y NO hace un pedido explícito de comida en ese mensaje, significa que el pedido ya se tomó por teléfono o en persona. Tu única respuesta debe ser: "Transferencia comprobada. ✅" (intent: "chat"). NUNCA preguntes qué pidieron ni a dónde se envía, asume que ya tenemos esos datos.
-15. **TIEMPO DE ESPERA Y DEMORA (SOLO CUANDO EL CLIENTE PREGUNTE)**: Si el cliente pregunta explícitamente cuánto demora el pedido, cuánto se tardan o cuál es el tiempo de espera, indícale amablemente que el tiempo estimado de espera es **Entre 40 y 50 min** (o "entre 40 y 50 minutos"). Recuerda variar la estructura y palabras de tu respuesta para mantener naturalidad y evitar ser bloqueado por repetición.
+15. **TIEMPO DE ESPERA Y DEMORA (SOLO CUANDO EL CLIENTE PREGUNTE)**: Si el cliente pregunta explícitamente cuánto demora el pedido, cuánto se tardan o cuál es el tiempo de espera, indícale amablemente que el tiempo estimado tanto para domicilio como para recoger es **entre una hora y una hora y 20**. Recuerda variar la estructura y palabras de tu respuesta para mantener naturalidad y evitar ser bloqueado por repetición.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {

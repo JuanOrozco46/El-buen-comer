@@ -136,7 +136,7 @@ export function formatOrderConfirmation(
     `✅ *Pedido #${orderId} Confirmado*\n\n` +
     `*Tus platos:*\n${itemsList}\n\n` +
     `*Total: $${total.toLocaleString("es-CO")}*\n\n` +
-    `_Tu pedido llegará en aproximadamente 1 hora. ¡Gracias por tu compra!_ 🍽️`
+    `_El tiempo estimado para entrega o recoger es entre una hora y una hora y 20. ¡Gracias por tu compra!_ 🍽️`
   );
 }
 
