@@ -165,8 +165,9 @@ function getPanicRejectionMessage(): string {
 /**
  * Emula la respuesta JSON que devolvería Gemini para las pruebas unitarias locales.
  */
-function helperGetMockedGeminiResponse(messageText: string, hasImage: boolean): any {
+function helperGetMockedGeminiResponse(messageText: string, hasImage: boolean, isExtendedTime: boolean = false): any {
   const normalized = messageText.toLowerCase();
+  const deliveryTimeText = isExtendedTime ? "de entre una hora y una hora y media" : "de entre 30 y 45 minutos";
 
   // Test 1: Pedido normal
   if (normalized.includes("arroz de la casa") && normalized.includes("cristal")) {
@@ -197,7 +198,15 @@ function helperGetMockedGeminiResponse(messageText: string, hasImage: boolean): 
   if (normalized.includes("demora") || normalized.includes("tarda") || normalized.includes("tiempo de espera") || normalized.includes("cuanto se demoran") || normalized.includes("cuanto se demora")) {
     return {
       intent: "chat",
-      replyText: "El tiempo estimado de entrega tanto para domicilio como para recoger es de entre una hora y una hora y 20. 😊"
+      replyText: `El tiempo estimado de entrega tanto para domicilio como para recoger es ${deliveryTimeText}. 😊`
+    };
+  }
+
+  // Pregunta por facturación electrónica
+  if (normalized.includes("factura electronica") || normalized.includes("facturación electrónica") || normalized.includes("facturacion electronica") || normalized.includes("factura electrónica") || normalized.includes("facturacion") || normalized.includes("facturación")) {
+    return {
+      intent: "chat",
+      replyText: "Hola, por el momento en el restaurante no manejamos facturación electrónica. 😊"
     };
   }
 
@@ -606,6 +615,10 @@ Estilo con sugerencia de hora:
           timeStatus += "\n⚠️ AVISO CRÍTICO (MODO RECOGER ACTIVO): Actualmente SOLO aceptamos pedidos para RECOGER en el local. NO HAY DOMICILIOS bajo ninguna circunstancia.";
         }
 
+        const deliveryTimeText = globalSettings?.isExtendedTimeActive
+          ? "entre una hora y una hora y media"
+          : "entre 30 y 45 minutos";
+
         const systemInstruction = `Eres el asistente digital de "El buen comer", ubicado en Calle 6 #39A-06 Entrada del barrio Rockefeller, Buenaventura. La fecha y hora actual es: ${currentDate}. Estás atendiendo por WhatsApp.${timeStatus}
 
 REGLA DE ORO ANTI-SPAM: PARA EVITAR RESTRICCIONES DE WHATSAPP, NUNCA RESPONDAS EXACTAMENTE IGUAL A DOS CLIENTES. VARÍA SIEMPRE LA ESTRUCTURA, EL TONO, LAS PALABRAS Y EL USO DE EMOJIS. USA LOS GUIONES SIGUIENTES SÓLO COMO BASE DE INFORMACIÓN, NO COMO TEXTO LITERAL OBLIGATORIO (A MENOS QUE SE INDIQUE LO CONTRARIO).
@@ -691,14 +704,15 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
    - **FECHA**: Debe ser la fecha de HOY (${currentDate}).
    - **MONTO**: Puede ser el total o una parte. Si es una parte, DEBES mencionar brevemente cuánto falta por pagar en efectivo.
    - Si el número de destino es diferente o la fecha es vieja, RECHAZA el pago de inmediato.
-8. **CONFIRMACIÓN FINAL**: Solo si el comprobante es válido (o el pago es contraentrega total - intent "order"), confirma súper BREVEMENTE con una sola oración informando que el pedido (ya sea para domicilio o para recoger) tomará entre una hora y una hora y 20 (ej. "¡Listo! En entre una hora y una hora y 20 llega tu pedido.", "Vale, tu pedido para recoger/domicilio estará en entre una hora y una hora y 20."). NUNCA repitas todo el pedido de nuevo y VARÍA siempre la frase para evitar bloqueos por spam.
+8. **CONFIRMACIÓN FINAL**: Solo si el comprobante es válido (o el pago es contraentrega total - intent "order"), confirma súper BREVEMENTE con una sola oración informando que el pedido (ya sea para domicilio o para recoger) tomará ${deliveryTimeText} (ej. "¡Listo! En ${deliveryTimeText} llega tu pedido.", "Vale, tu pedido para recoger/domicilio estará listo en ${deliveryTimeText}."). NUNCA repitas todo el pedido de nuevo y VARÍA siempre la frase para evitar bloqueos por spam.
 9. **ANTI-HALLUCINATION**: Si no hay etiqueta "[Imagen...]", NO confirmes nada.
 10. **AUDIOS**: Indica que solo texto, breve.
 11. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
 12. **ENVÍO DE MENÚ ("send_menu")**: Si el cliente pide el menú y decides usar el intent "send_menu", el sistema adjuntará AUTOMÁTICAMENTE una imagen bonita del menú. Por lo tanto, bajo NINGUNA CIRCUNSTANCIA escribas los platos o precios in the 'replyText'. Tu 'replyText' debe ser únicamente una frase corta como: "¡Claro! Aquí te comparto nuestro menú 👇".
 13. **RESTRICCIÓN DE ORDEN**: NUNCA uses el intent "order" si faltan datos obligatorios para el pedido (Nombre, Dirección/Barrio exacto SI ES DOMICILIO, definición clara de los productos y tamaños, o la confirmación/imagen de pago según corresponda). Si falta CUALQUIER DATO o aún no se ha confirmado el pago/entrega, usa el intent "chat".
 14. **PAGOS AISLADOS (PEDIDOS EXTERNOS)**: Si un cliente envía un comprobante de pago (imagen) junto con un texto corto (ej. "pago pedido Ruth", "transferencia comprobada") y NO hace un pedido explícito de comida en ese mensaje, significa que el pedido ya se tomó por teléfono o en persona. Tu única respuesta debe ser: "Transferencia comprobada. ✅" (intent: "chat"). NUNCA preguntes qué pidieron ni a dónde se envía, asume que ya tenemos esos datos.
-15. **TIEMPO DE ESPERA Y DEMORA (SOLO CUANDO EL CLIENTE PREGUNTE)**: Si el cliente pregunta explícitamente cuánto demora el pedido, cuánto se tardan o cuál es el tiempo de espera, indícale amablemente que el tiempo estimado tanto para domicilio como para recoger es **entre una hora y una hora y 20**. Recuerda variar la estructura y palabras de tu respuesta para mantener naturalidad y evitar ser bloqueado por repetición.
+15. **TIEMPO DE ESPERA Y DEMORA (SOLO CUANDO EL CLIENTE PREGUNTE)**: Si el cliente pregunta explícitamente cuánto demora el pedido, cuánto se tardan o cuál es el tiempo de espera, indícale amablemente que el tiempo estimado tanto para domicilio como para recoger es **${deliveryTimeText}**. Recuerda variar la estructura y palabras de tu respuesta para mantener naturalidad y evitar ser bloqueado por repetición.
+16. **FACTURACIÓN ELECTRÓNICA (SOLO CUANDO EL CLIENTE PREGUNTE)**: El restaurante NO maneja ni emite facturación electrónica. Si algún cliente pregunta por factura electrónica o facturación electrónica, aclararle o responderle de forma amable y directa que por el momento el restaurante no cuenta con/maneja facturación electrónica.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
@@ -756,7 +770,7 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           };
         } else if (process.env.MOCK_GEMINI === "true") {
           console.log(`[WhatsApp Bot] MOCK MODE ACTIVE: Generating simulated Gemini response for user query.`);
-          geminiResponse = helperGetMockedGeminiResponse(currentBatchUserText, hasImageInBatch);
+          geminiResponse = helperGetMockedGeminiResponse(currentBatchUserText, hasImageInBatch, globalSettings?.isExtendedTimeActive);
         } else if (hasAudioInBatch) {
           console.log(`[WhatsApp Bot] Audio message detected in batch for ${senderPhone}. Generating local audio rejection response.`);
           geminiResponse = {

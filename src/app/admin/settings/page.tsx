@@ -16,7 +16,8 @@ import {
   WifiOff,
   Send,
   QrCode,
-  RefreshCw
+  RefreshCw,
+  Clock
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -35,6 +36,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [isPanicActive, setIsPanicActive] = useState(false);
   const [isPickupOnlyActive, setIsPickupOnlyActive] = useState(false);
+  const [isExtendedTimeActive, setIsExtendedTimeActive] = useState(false);
 
   // New User Form State
   const [newUser, setNewUser] = useState({ userName: "", name: "", role: "WAITER", password: "" });
@@ -65,6 +67,7 @@ export default function SettingsPage() {
         const json = await res.json();
         setIsPanicActive(json.isPanicModeActive);
         setIsPickupOnlyActive(json.isPickupOnlyActive);
+        setIsExtendedTimeActive(json.isExtendedTimeActive || false);
       } catch (err) {
         console.error(err);
       } finally {
@@ -193,6 +196,20 @@ export default function SettingsPage() {
       });
       const json = await res.json();
       setIsPickupOnlyActive(json.isPickupOnlyActive);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleExtendedTime = async () => {
+    try {
+      const res = await fetch("/api/admin/panic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extendedTime: !isExtendedTimeActive })
+      });
+      const json = await res.json();
+      setIsExtendedTimeActive(json.isExtendedTimeActive);
     } catch (err) {
       console.error(err);
     }
@@ -576,6 +593,33 @@ export default function SettingsPage() {
                     <div>
                       <p className="text-sm font-black text-orange-600 uppercase tracking-widest leading-none">Solo Recoger Activo</p>
                       <p className="text-[10px] text-orange-500 font-bold mt-1 uppercase">El bot advierte a los clientes sobre la disponibilidad limitada.</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center mt-8 pt-8 border-t border-zinc-200">
+                   <div>
+                      <p className="font-black text-zinc-900 uppercase tracking-widest text-sm">Tiempo de Entrega Extendido</p>
+                      <p className="text-xs text-zinc-500 font-medium max-w-sm mt-1">
+                        Al activarse, el bot informará un tiempo estimado de 1 hora a 1 hora y media. Desactivado (normal): 30 a 45 minutos.
+                      </p>
+                   </div>
+                   <div 
+                    onClick={toggleExtendedTime}
+                    className={`w-20 h-10 rounded-full cursor-pointer transition-all relative ${isExtendedTimeActive ? "bg-amber-600 shadow-lg shadow-amber-600/30" : "bg-zinc-300"}`}
+                   >
+                     <div className={`absolute top-1 w-8 h-8 bg-white rounded-full transition-all ${isExtendedTimeActive ? "left-11 shadow-md" : "left-1"}`} />
+                   </div>
+                </div>
+
+                {isExtendedTimeActive && (
+                  <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl flex gap-4 items-center">
+                    <div className="w-10 h-10 bg-amber-600 text-white rounded-xl flex items-center justify-center animate-pulse">
+                      <Clock size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-amber-600 uppercase tracking-widest leading-none">Tiempo Extendido Activo</p>
+                      <p className="text-[10px] text-amber-500 font-bold mt-1 uppercase">El bot responderá que los pedidos demoran de 1 hora a 1 hora y media.</p>
                     </div>
                   </div>
                 )}

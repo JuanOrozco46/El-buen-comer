@@ -11,11 +11,12 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { active, pickupOnly } = body;
+    const { active, pickupOnly, extendedTime } = body;
 
     const data: any = {};
     if (active !== undefined) data.isPanicModeActive = active;
     if (pickupOnly !== undefined) data.isPickupOnlyActive = pickupOnly;
+    if (extendedTime !== undefined) data.isExtendedTimeActive = extendedTime;
 
     const updated = await prisma.globalSettings.upsert({
       where: { id: 1 },
@@ -25,7 +26,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ 
       isPanicModeActive: updated.isPanicModeActive,
-      isPickupOnlyActive: updated.isPickupOnlyActive
+      isPickupOnlyActive: updated.isPickupOnlyActive,
+      isExtendedTimeActive: updated.isExtendedTimeActive
     });
   } catch (error) {
     return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
@@ -36,6 +38,7 @@ export async function GET() {
   const settings = await prisma.globalSettings.findUnique({ where: { id: 1 } }) as any;
   return NextResponse.json({ 
     isPanicModeActive: settings?.isPanicModeActive || false,
-    isPickupOnlyActive: settings?.isPickupOnlyActive || false
+    isPickupOnlyActive: settings?.isPickupOnlyActive || false,
+    isExtendedTimeActive: settings?.isExtendedTimeActive || false
   });
 }

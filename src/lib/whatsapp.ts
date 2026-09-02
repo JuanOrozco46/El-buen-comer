@@ -126,7 +126,8 @@ export async function sendTypingIndicator(to: string, durationMs: number = 3000)
 export function formatOrderConfirmation(
   orderId: number,
   items: { productName: string; quantity: number; sizeName: string }[],
-  total: number
+  total: number,
+  estimatedTime: string = "entre 30 y 45 minutos"
 ): string {
   const itemsList = items
     .map((i) => `  • ${i.quantity}x ${i.productName} (${i.sizeName})`)
@@ -136,7 +137,7 @@ export function formatOrderConfirmation(
     `✅ *Pedido #${orderId} Confirmado*\n\n` +
     `*Tus platos:*\n${itemsList}\n\n` +
     `*Total: $${total.toLocaleString("es-CO")}*\n\n` +
-    `_El tiempo estimado para entrega o recoger es entre una hora y una hora y 20. ¡Gracias por tu compra!_ 🍽️`
+    `_El tiempo estimado para entrega o recoger es ${estimatedTime}. ¡Gracias por tu compra!_ 🍽️`
   );
 }
 
