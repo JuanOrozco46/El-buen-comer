@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import prisma from "../../../../lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../../../lib/auth";
@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     const isWaiter = role === "WAITER";
     const currentUserId = Number(session.user.id);
 
-    // Calculate today's start in Colombia time (UTC-5)
+    // Calculate today start in Colombia time (UTC-5)
     const today = new Date();
     today.setUTCHours(today.getUTCHours() - 5);
     today.setUTCHours(0, 0, 0, 0);
@@ -23,8 +23,6 @@ export async function GET(req: Request) {
       createdAt: { gte: today }
     };
 
-    // For waiters: always filter by their userId. 
-    // Cashiers and Admins can see the summary of all creators for today.
     if (isWaiter) {
       where.userId = currentUserId;
     }
@@ -33,27 +31,55 @@ export async function GET(req: Request) {
       where,
       include: {
         user: true,
+        items: {
+          include: {
+            product: { select: { category: true } }
+          }
+        }
       },
     });
 
-    // Group by cashier
-    const summaryMap: Record<number, { id: number, name: string, total: number, deliveryFees: number }> = {};
+    const summaryMap: Record<number, {
+      id: number;
+      name: string;
+      total: number;
+      deliveryFees: number;
+      totalPlatos: number;
+      totalBebidas: number;
+    }> = {};
 
     orders.forEach((order: any) => {
       const uId = order.userId;
       if (!summaryMap[uId]) {
-        summaryMap[uId] = { 
-          id: uId, 
-          name: order.user?.name || "Usuario Desconocido", 
+        summaryMap[uId] = {
+          id: uId,
+          name: order.user?.name || "Usuario Desconocido",
           total: 0,
-          deliveryFees: 0
+          deliveryFees: 0,
+          totalPlatos: 0,
+          totalBebidas: 0,
         };
       }
       summaryMap[uId].total += Number(order.total);
       summaryMap[uId].deliveryFees += Number(order.deliveryFee || 0);
+
+      for (const item of order.items) {
+        const itemTotal = Number(item.price) * Number(item.quantity);
+        if (item.product?.category === "Bebidas") {
+          summaryMap[uId].totalBebidas += itemTotal;
+        } else {
+          summaryMap[uId].totalPlatos += itemTotal;
+        }
+      }
     });
 
-    return NextResponse.json(Object.values(summaryMap));
+    const byUser = Object.values(summaryMap);
+    const grandTotal = byUser.reduce((acc, u) => acc + u.total, 0);
+    const grandTotalPlatos = byUser.reduce((acc, u) => acc + u.totalPlatos, 0);
+    const grandTotalBebidas = byUser.reduce((acc, u) => acc + u.totalBebidas, 0);
+    const grandDeliveryFees = byUser.reduce((acc, u) => acc + u.deliveryFees, 0);
+
+    return NextResponse.json({ byUser, grandTotal, grandTotalPlatos, grandTotalBebidas, grandDeliveryFees });
   } catch (error) {
     console.error("Sales Summary Error:", error);
     return NextResponse.json({ error: "Failed to fetch sales summary" }, { status: 500 });

@@ -12,7 +12,10 @@ import {
   CreditCard, 
   Hash,
   ShoppingBag,
-  Clock
+  Clock,
+  UtensilsCrossed,
+  GlassWater,
+  TrendingUp
 } from "lucide-react";
 import { FullOrder } from "../../../types";
 
@@ -146,6 +149,55 @@ export default function SalesHistoryPage() {
           </button>
         </div>
       </header>
+
+      {/* Summary Cards */}
+      {!loading && orders.length > 0 && (() => {
+        const grandTotal = orders.reduce((acc, o) => acc + Number(o.total), 0);
+        const grandTotalBebidas = orders.reduce((acc, o) => {
+          return acc + o.items
+            .filter((i: any) => i.product?.category === "Bebidas")
+            .reduce((s: number, i: any) => s + Number(i.price) * Number(i.quantity), 0);
+        }, 0);
+        const grandTotalPlatos = orders.reduce((acc, o) => {
+          return acc + o.items
+            .filter((i: any) => i.product?.category !== "Bebidas")
+            .reduce((s: number, i: any) => s + Number(i.price) * Number(i.quantity), 0);
+        }, 0);
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-emerald-50 border border-emerald-100 rounded-[28px] p-6 flex items-center gap-5">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+                <TrendingUp size={22} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500 mb-1">Total Ventas</p>
+                <p className="text-2xl font-black text-emerald-700 tracking-tighter">${grandTotal.toLocaleString()}</p>
+                <p className="text-[10px] font-bold text-emerald-400">{orders.length} orden{orders.length !== 1 ? 'es' : ''}</p>
+              </div>
+            </div>
+            <div className="bg-orange-50 border border-orange-100 rounded-[28px] p-6 flex items-center gap-5">
+              <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center shrink-0">
+                <UtensilsCrossed size={22} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-500 mb-1">Platos</p>
+                <p className="text-2xl font-black text-orange-700 tracking-tighter">${grandTotalPlatos.toLocaleString()}</p>
+                {grandTotal > 0 && <p className="text-[10px] font-bold text-orange-400">{Math.round((grandTotalPlatos / grandTotal) * 100)}% del total</p>}
+              </div>
+            </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-[28px] p-6 flex items-center gap-5">
+              <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
+                <GlassWater size={22} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500 mb-1">Bebidas</p>
+                <p className="text-2xl font-black text-blue-700 tracking-tighter">${grandTotalBebidas.toLocaleString()}</p>
+                {grandTotal > 0 && <p className="text-[10px] font-bold text-blue-400">{Math.round((grandTotalBebidas / grandTotal) * 100)}% del total</p>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Main Table */}
       <div className="bg-white border border-zinc-100 rounded-[32px] overflow-hidden shadow-sm">

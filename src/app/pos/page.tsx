@@ -15,7 +15,7 @@ function POSPageContent() {
   const { data: session, status } = useSession();
   const [products, setProducts] = useState<Product[]>([]);
   const [pendingOrders, setPendingOrders] = useState<FullOrder[]>([]);
-  const [salesSummary, setSalesSummary] = useState<any[]>([]);
+  const [salesSummary, setSalesSummary] = useState<{ byUser: any[]; grandTotal: number; grandTotalPlatos: number; grandTotalBebidas: number; grandDeliveryFees: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -197,7 +197,7 @@ function POSPageContent() {
       const oData = await ordRes.json();
       const sData = await sumRes.json();
       if (Array.isArray(oData)) setPendingOrders(oData);
-      if (Array.isArray(sData)) setSalesSummary(sData);
+      if (sData && sData.byUser) setSalesSummary(sData);
     } catch (err) {
       console.error("Refresh error:", err);
     }
@@ -662,53 +662,95 @@ function POSPageContent() {
             </h2>
 
             {/* Shift Sales Dashboard */}
-            {salesSummary.length > 0 ? (
-              <div className="bg-white border-2 border-zinc-100 rounded-[40px] p-8 lg:p-12 shadow-sm">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-12 mb-12">
-                  <div className="flex flex-col md:flex-row gap-12 lg:gap-24">
+            {salesSummary ? (
+              <div className="space-y-8">
+                {/* Grand total + breakdown cards */}
+                <div className="bg-white border-2 border-zinc-100 rounded-[40px] p-8 lg:p-12 shadow-sm">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 mb-10">
                     <div>
                       <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-2">Ventas Netas (Caja)</h3>
                       <p className="text-4xl md:text-6xl font-black text-emerald-600 tracking-tighter">
-                        ${salesSummary.reduce((acc: any, s: any) => acc + s.total, 0).toLocaleString()}
+                        ${salesSummary.grandTotal.toLocaleString()}
                       </p>
                     </div>
-                    <div className="pt-2 md:pt-0 border-t md:border-t-0 md:border-l border-zinc-100 md:pl-12">
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-2">Recaudo Domicilios</h3>
-                      <p className="text-2xl md:text-4xl font-black text-orange-500 tracking-tighter">
-                        ${salesSummary.reduce((acc: any, s: any) => acc + (s.deliveryFees || 0), 0).toLocaleString()}
+                    <button
+                      onClick={refreshOrders}
+                      className="px-6 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-2"
+                    >
+                      Actualizar Datos
+                    </button>
+                  </div>
+
+                  {/* Platos / Bebidas / Domicilios breakdown */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-orange-50 border border-orange-100 rounded-[28px] p-6">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400 mb-2">🍛 Platos</p>
+                      <p className="text-2xl md:text-3xl font-black text-orange-600 tracking-tighter">
+                        ${salesSummary.grandTotalPlatos.toLocaleString()}
+                      </p>
+                      {salesSummary.grandTotal > 0 && (
+                        <p className="text-[10px] font-bold text-orange-400 mt-1">
+                          {Math.round((salesSummary.grandTotalPlatos / salesSummary.grandTotal) * 100)}% del total
+                        </p>
+                      )}
+                    </div>
+                    <div className="bg-blue-50 border border-blue-100 rounded-[28px] p-6">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 mb-2">🥤 Bebidas</p>
+                      <p className="text-2xl md:text-3xl font-black text-blue-600 tracking-tighter">
+                        ${salesSummary.grandTotalBebidas.toLocaleString()}
+                      </p>
+                      {salesSummary.grandTotal > 0 && (
+                        <p className="text-[10px] font-bold text-blue-400 mt-1">
+                          {Math.round((salesSummary.grandTotalBebidas / salesSummary.grandTotal) * 100)}% del total
+                        </p>
+                      )}
+                    </div>
+                    <div className="bg-zinc-50 border border-zinc-200 rounded-[28px] p-6">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-2">🛵 Domicilios</p>
+                      <p className="text-2xl md:text-3xl font-black text-zinc-700 tracking-tighter">
+                        ${salesSummary.grandDeliveryFees.toLocaleString()}
                       </p>
                     </div>
                   </div>
-                  <button 
-                    onClick={refreshOrders}
-                    className="px-6 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-2"
-                  >
-                    Actualizar Datos
-                  </button>
                 </div>
-                
-                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-6 px-2">Desglose por Mesero</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {salesSummary.map((userSum: any) => (
-                    <div key={userSum.id} className="flex flex-col gap-3 bg-zinc-50 p-6 rounded-[32px] border border-zinc-100 shadow-sm transition-all hover:scale-[1.02]">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-white shadow-sm text-zinc-600 rounded-2xl flex items-center justify-center font-black text-lg shrink-0">
-                          {userSum.name.charAt(0)}
+
+                {/* Per-cashier breakdown */}
+                {salesSummary.byUser.length > 0 && (
+                  <div className="bg-white border-2 border-zinc-100 rounded-[40px] p-8 lg:p-10 shadow-sm">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-6 px-2">Desglose por Mesero</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {salesSummary.byUser.map((userSum: any) => (
+                        <div key={userSum.id} className="flex flex-col gap-3 bg-zinc-50 p-6 rounded-[32px] border border-zinc-100 shadow-sm transition-all hover:scale-[1.02]">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-white shadow-sm text-zinc-600 rounded-2xl flex items-center justify-center font-black text-lg shrink-0">
+                              {userSum.name.charAt(0)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 truncate leading-none mb-1.5">{userSum.name}</p>
+                              <p className="text-lg font-black text-zinc-900 leading-none">${userSum.total.toLocaleString()}</p>
+                            </div>
+                          </div>
+                          <div className="mt-1 pt-3 border-t border-zinc-200/50 space-y-1.5">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[9px] font-bold text-orange-400 uppercase tracking-widest">🍛 Platos</span>
+                              <span className="text-[11px] font-black text-orange-600">${userSum.totalPlatos.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-[9px] font-bold text-blue-400 uppercase tracking-widest">🥤 Bebidas</span>
+                              <span className="text-[11px] font-black text-blue-600">${userSum.totalBebidas.toLocaleString()}</span>
+                            </div>
+                            {(userSum.deliveryFees || 0) > 0 && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">🛵 Domicilios</span>
+                                <span className="text-[11px] font-black text-zinc-600">${userSum.deliveryFees.toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 truncate leading-none mb-1.5">{userSum.name}</p>
-                          <p className="text-lg font-black text-zinc-900 leading-none">${userSum.total.toLocaleString()}</p>
-                        </div>
-                      </div>
-                      {(userSum.deliveryFees || 0) > 0 && (
-                        <div className="mt-2 pt-3 border-t border-zinc-200/50 flex justify-between items-center">
-                          <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Domicilios</span>
-                          <span className="text-[11px] font-black text-orange-600">+${userSum.deliveryFees.toLocaleString()}</span>
-                        </div>
-                      )}
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-zinc-400 bg-white rounded-[40px] border-2 border-dashed border-zinc-200">

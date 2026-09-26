@@ -334,19 +334,28 @@ export async function POST(req: Request) {
       let rawBase64 = body.base64 || data.base64 || data.message?.base64; // Check if already present
 
       if (!rawBase64 && apiUrl && apiKey && instanceName && data.key?.id) {
-        try {
-          const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
-          const response = await fetch(`${cleanUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": apiKey },
-            body: JSON.stringify({ message: { key: data.key, message: data.message } })
-          });
-          const fetchedData = await response.json();
-          if (fetchedData && typeof fetchedData.base64 === "string") {
-            rawBase64 = fetchedData.base64.replace(/^data:[^;]+;base64,/, "");
+        const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const response = await fetch(`${cleanUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "apikey": apiKey },
+              body: JSON.stringify({ message: { key: data.key, message: data.message } })
+            });
+            if (response.ok) {
+              const fetchedData = await response.json();
+              if (fetchedData && typeof fetchedData.base64 === "string") {
+                rawBase64 = fetchedData.base64.replace(/^data:[^;]+;base64,/, "");
+                console.log(`[WhatsApp Bot] Successfully fetched media base64 on attempt ${attempt} for ${senderPhone}`);
+                break;
+              }
+            }
+          } catch (e: any) {
+            console.error(`[WhatsApp Bot] Attempt ${attempt}/3 fetching base64 for media failed (${senderPhone}):`, e.message);
           }
-        } catch (e) {
-          console.error("[WhatsApp Bot] Error fetching base64 for media:", e);
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, 1000 * attempt));
+          }
         }
       }
       mediaItem.base64 = rawBase64;
@@ -567,7 +576,7 @@ export async function POST(req: Request) {
         });
         console.log(`[WhatsApp Bot] Time Check for ${senderPhone}: ${hStr}:${mStr} (Value: ${timeValue})`);
 
-        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos de domicilio únicamente de 10:00 AM a 4:00 PM. Los pedidos para recoger en el local se pueden realizar de 10:00 AM a 6:30 PM. Si el cliente pregunta por el horario, debes aclararle que el servicio de domicilio es solo hasta las 4:00 PM y para recoger en el local es hasta las 6:30 PM. Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
+        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos de domicilio únicamente de 10:00 AM a 4:00 PM. Los pedidos para recoger en el local o servicio a la mesa se atienden de 10:00 AM a 6:30 PM. Si el cliente pregunta por el horario o por servicio a la mesa, aclárale que SÍ tenemos servicio a la mesa en el local de 10:00 AM a 6:30 PM (y domicilios hasta las 4:00 PM). Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
         if (globalSettings?.isPanicModeActive) {
           timeStatus = `\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. NO USES EL INTENT ORDER.
 INSTRUCCIONES PARA VARIAR LA RESPUESTA:
@@ -697,7 +706,9 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
    - $7.000: Ciudadela 3/4, Pino, 12 Abril, Independencia, Bolivar, Grancolombia, Santa Cruz, Isla, Cascajal, La ciudadela.
    - $8.000: Éxito, Triunfo, Nueva Grana, Brisas.
    - $9.000: Colinas C.
-5. **RECOLECCIÓN DE DATOS**: Pide solo lo que falte. Para domicilios: Nombre, Dirección/Barrio, Pago. SI EL PEDIDO ES PARA RECOGER: NUNCA PIDAS DIRECCIÓN NI BARRIO, SOLO Nombre y Pago. IMPORTANTE PARA DOMICILIOS: NUNCA des el total a pagar ni los datos de transferencia sin saber primero la dirección/barrio. Si faltan VARIOS datos, PÍDELOS TODOS JUNTOS en una sola respuesta amigable.
+5. **RECOLECCIÓN DE DATOS**: Pide solo lo que falte. Para domicilios: Nombre, Teléfono de contacto, Dirección/Barrio, Pago. SI EL PEDIDO ES PARA RECOGER: NUNCA PIDAS DIRECCIÓN NI BARRIO, SOLO Nombre, Teléfono y Pago. IMPORTANTE PARA DOMICILIOS: NUNCA des el total a pagar ni los datos de transferencia sin saber primero la dirección/barrio. Si faltan VARIOS datos, PÍDELOS TODOS JUNTOS en una sola respuesta amigable.
+   - **TELÉFONO OBLIGATORIO**: SIEMPRE pide un número de teléfono/celular de contacto al cliente. Guárdalo en el campo "customerPhone" del JSON.
+   - **NOMBRE DEL CLIENTE (CRÍTICO)**: El campo "customerName" SIEMPRE debe contener el nombre que el CLIENTE te dice en la conversación, NO el nombre de su perfil de WhatsApp. Si el cliente dice "mi nombre es María" o "a nombre de Pedro", usa ESE nombre exacto. NUNCA uses el nombre del perfil de WhatsApp del remitente.
 6. **TRANSFERENCIA**: SOLO cuando YA SEPAS la dirección/barrio (o si es para recoger), da el total resumido usando placeholders y los datos (ej: "El total es {{TOTAL}} ({{SUBTOTAL}} del pedido + {{DOMICILIO}} domicilio). Transfiere a Nequi 3173941189 o llave @NEQUILUI57354 y envíame la imagen"). Mantenlo BREVE y VARÍA tus palabras cada vez que lo pidas para evitar bloqueos de WhatsApp. Pide la imagen ANTES DE GENERAR LA ORDEN.
 7. **VALIDACIÓN DE COMPROBANTE (OBLIGATORIO)**: Cuando envíen la imagen, DEBES verificar visualmente en la captura:
    - **NÚMERO DE DESTINO**: Debe ser obligatoriamente el **3173941189**.
@@ -709,10 +720,18 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
 10. **AUDIOS**: Indica que solo texto, breve.
 11. **CAMBIOS**: Solo primeros 5 min. Si pasa, di que ya entró a preparación.
 12. **ENVÍO DE MENÚ ("send_menu")**: Si el cliente pide el menú y decides usar el intent "send_menu", el sistema adjuntará AUTOMÁTICAMENTE una imagen bonita del menú. Por lo tanto, bajo NINGUNA CIRCUNSTANCIA escribas los platos o precios in the 'replyText'. Tu 'replyText' debe ser únicamente una frase corta como: "¡Claro! Aquí te comparto nuestro menú 👇".
-13. **RESTRICCIÓN DE ORDEN**: NUNCA uses el intent "order" si faltan datos obligatorios para el pedido (Nombre, Dirección/Barrio exacto SI ES DOMICILIO, definición clara de los productos y tamaños, o la confirmación/imagen de pago según corresponda). Si falta CUALQUIER DATO o aún no se ha confirmado el pago/entrega, usa el intent "chat".
+13. **RESTRICCIÓN DE ORDEN**: NUNCA uses el intent "order" si faltan datos obligatorios para el pedido (Nombre del cliente, Teléfono de contacto, Dirección/Barrio exacto SI ES DOMICILIO, definición clara de los productos y tamaños, o la confirmación/imagen de pago según corresponda). Si falta CUALQUIER DATO (especialmente el nombre o el teléfono) o aún no se ha confirmado el pago/entrega, usa el intent "chat" y PIDE los datos faltantes. Sin nombre y sin teléfono NO se puede pasar el pedido a cocina.
 14. **PAGOS AISLADOS (PEDIDOS EXTERNOS)**: Si un cliente envía un comprobante de pago (imagen) junto con un texto corto (ej. "pago pedido Ruth", "transferencia comprobada") y NO hace un pedido explícito de comida en ese mensaje, significa que el pedido ya se tomó por teléfono o en persona. Tu única respuesta debe ser: "Transferencia comprobada. ✅" (intent: "chat"). NUNCA preguntes qué pidieron ni a dónde se envía, asume que ya tenemos esos datos.
 15. **TIEMPO DE ESPERA Y DEMORA (SOLO CUANDO EL CLIENTE PREGUNTE)**: Si el cliente pregunta explícitamente cuánto demora el pedido, cuánto se tardan o cuál es el tiempo de espera, indícale amablemente que el tiempo estimado tanto para domicilio como para recoger es **${deliveryTimeText}**. Recuerda variar la estructura y palabras de tu respuesta para mantener naturalidad y evitar ser bloqueado por repetición.
-16. **FACTURACIÓN ELECTRÓNICA (SOLO CUANDO EL CLIENTE PREGUNTE)**: El restaurante NO maneja ni emite facturación electrónica. Si algún cliente pregunta por factura electrónica o facturación electrónica, aclararle o responderle de forma amable y directa que por el momento el restaurante no cuenta con/maneja facturación electrónica.
+16. **SERVICIO A LA MESA Y ATENCIÓN EN EL LOCAL**:
+   - El restaurante SÍ cuenta con servicio a la mesa.
+   - Si el cliente pregunta si tenemos servicio a la mesa, si pueden ir a comer/almorzar al restaurante, si hay mesas disponibles o si atienden en el local, respóndele afirmativamente que SÍ tenemos servicio a la mesa.
+   - El horario para comer en el local con servicio a la mesa y para pedir para recoger es de **10:00 AM a 6:30 PM** (los domicilios son únicamente hasta las 4:00 PM).
+   - Si el cliente pregunta por la ubicación del restaurante, indícale nuestra dirección: Calle 6 #39A-06, Entrada del barrio Rockefeller.
+   - ⚠️ SEGURIDAD ANTI-SPAM: Varía SIEMPRE las palabras y la estructura de tu respuesta para mantener un tono natural y evitar bloqueos de WhatsApp.
+17. **REGLA MANDATORIA DE INTENT "ORDER"**:
+   - NUNCA uses frases de confirmación de pedido o preparación (ej. "en preparación", "tu pedido llegará en", "estará listo en", "pedido confirmado", "orden registrada") si vas a responder con intent "chat".
+   - Si el cliente confirmó su pedido o envió su transferencia/pago y vas a confirmarle que el pedido entra a preparación o entrega, ES OBLIGATORIO que el intent de la respuesta sea "order" Y que incluyas la lista completa de platos en 'orderData.items'.
 
 FORMATO DE SALIDA (ESTRICTO JSON):
 {
@@ -937,6 +956,43 @@ FORMATO DE SALIDA (ESTRICTO JSON):
               console.log(`[WhatsApp Bot] Keeping intent 'order' since current response has orderData for ${senderPhone}.`);
             }
           }
+          // ⚠️ RECOVERY 3: Fallback Order Rescue
+          // If Gemini responds with "chat" BUT the message text confirms order preparation/delivery,
+          // OR contains valid items in orderData, FORCE conversion to "order" to prevent missed kitchen tickets.
+          const isConfirmingOrderText = (
+            isConfirmingPayment ||
+            /pedido.*(confirmad[oa]|list[oa]|en camino|en preparación|procesad[oa])/i.test(geminiResponse.replyText || "") ||
+            /(estará|estara|llegará|llegara|llega|está|esta).*(list[oa]|preparación|preparacion|camino|minuto)/i.test(geminiResponse.replyText || "") ||
+            /en preparación|en preparacion/i.test(geminiResponse.replyText || "")
+          );
+
+          if (geminiResponse.intent === "chat" && !hallucinatedConfirmation && isConfirmingOrderText) {
+            const currentHasItems = geminiResponse.orderData && geminiResponse.orderData.items && geminiResponse.orderData.items.length > 0;
+            if (currentHasItems) {
+              console.log(`[WhatsApp Bot] 🛠️ RESCUE: Converted intent 'chat' -> 'order' for ${senderPhone} (replyText contains confirmation phrasing and valid items exist).`);
+              geminiResponse.intent = "order";
+            } else {
+              // Try rescuing items from history
+              let lastOrderDataInHistory: any = null;
+              for (let idx = history.length - 1; idx >= 0; idx--) {
+                const hMsg = history[idx];
+                if (hMsg.role === "model") {
+                  try {
+                    const parsed = JSON.parse(hMsg.text);
+                    if (parsed.orderData && parsed.orderData.items && parsed.orderData.items.length > 0) {
+                      lastOrderDataInHistory = parsed.orderData;
+                      break;
+                    }
+                  } catch (e) { }
+                }
+              }
+              if (lastOrderDataInHistory) {
+                geminiResponse.intent = "order";
+                geminiResponse.orderData = lastOrderDataInHistory;
+                console.log(`[WhatsApp Bot] 🛠️ RESCUE: Converted intent 'chat' -> 'order' with rescued items from history for ${senderPhone}.`);
+              }
+            }
+          }
 
           // --- TYPING INDICATOR: show "escribiendo..." before sending ---
           const textLength = geminiResponse.replyText?.length || 20;
@@ -956,6 +1012,53 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           // =====================================================================
           if (geminiResponse.intent === "order" && geminiResponse.orderData && geminiResponse.orderData.items?.length > 0) {
             const od = geminiResponse.orderData;
+
+            // =====================================================================
+            // SERVER-SIDE SAFEGUARD: Block order if name or phone are missing
+            // Even if Gemini says "order", we CANNOT create a comanda without these
+            // =====================================================================
+            const missingFields: string[] = [];
+            if (!od.customerName || od.customerName.trim().length === 0) missingFields.push("nombre");
+            if (!od.customerPhone || od.customerPhone.trim().length === 0) missingFields.push("teléfono de contacto");
+
+            if (missingFields.length > 0) {
+              console.warn(`[WhatsApp Bot] BLOCKING order for ${senderPhone}: missing ${missingFields.join(", ")}. Downgrading to chat.`);
+              geminiResponse.intent = "chat";
+
+              const missingNameOnly = missingFields.length === 1 && missingFields[0] === "nombre";
+              const missingPhoneOnly = missingFields.length === 1 && missingFields[0] === "teléfono de contacto";
+
+              // Combinatorial message generator — pattern: "[prefix] tu [dato] [suffix]"
+              const prefixes = [
+                "Solo nos falta", "Nada más nos falta", "Solo falta",
+                "Nos hace falta", "Solo necesitamos", "Falta nada más",
+              ];
+              const nameData = ["nombre", "nombre completo"];
+              const phoneData = ["teléfono", "número de contacto", "celular", "cel de contacto"];
+              const bothConnectors = [" y ", " y tu "];
+              const suffixes = [
+                " para pasar el pedido a cocina", " para pasarlo a cocina",
+                " para confirmar tu pedido", " y lo pasamos a cocina",
+                " para enviarlo a preparación", " y ya queda listo",
+              ];
+              const emojis = [" 😊", " 🍳", " 📱", " 👍", " 🙏", ""];
+
+              const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
+              let dato: string;
+              if (missingNameOnly) {
+                dato = pick(nameData);
+              } else if (missingPhoneOnly) {
+                dato = pick(phoneData);
+              } else {
+                dato = pick(nameData) + pick(bothConnectors) + pick(phoneData);
+              }
+
+              geminiResponse.replyText = `${pick(prefixes)} tu ${dato}${pick(suffixes)}${pick(emojis)}`;
+            }
+
+            // Only proceed with order creation if the intent is STILL "order" (wasn't blocked above)
+            if (geminiResponse.intent === "order") {
             const settings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
             let user: any = null;
             if (settings?.activeWaiterId) {
@@ -1058,10 +1161,13 @@ FORMATO DE SALIDA (ESTRICTO JSON):
             let orderCreatedSuccessfully = false;
 
             if (validItems.length > 0 && user) {
-              const lookupPhone = senderPhone;
+              // Use the phone number the customer provided to Gemini; fall back to WhatsApp sender number
+              const customerProvidedPhone = od.customerPhone ? normalizarNumero(od.customerPhone) : "";
+              const lookupPhone = customerProvidedPhone || senderPhone;
               let additionalNotes = od.notes || "";
-              if (od.customerPhone && normalizarNumero(od.customerPhone) !== senderPhone) {
-                additionalNotes += `\n[TELÉFONO CONTACTO: ${od.customerPhone}]`;
+              // If the customer gave us a DIFFERENT phone than their WhatsApp, note it
+              if (customerProvidedPhone && customerProvidedPhone !== senderPhone) {
+                additionalNotes += `\n[WhatsApp: ${senderPhone}]`;
               }
               if (unmatchedItems.length > 0) {
                 additionalNotes += `\n⚠️ PRODUCTOS SIN COINCIDENCIA MANUAL (Revisar en cocina):\n${unmatchedItems.map(item => `- ${item}`).join('\n')}`;
@@ -1100,7 +1206,9 @@ FORMATO DE SALIDA (ESTRICTO JSON):
                       orderBy: { createdAt: 'desc' }
                     });
 
-                    let name = od.customerName || pushName || `WA: ${senderPhone}`;
+                    // CRITICAL: Use ONLY the name the customer provided to the bot, never the WhatsApp profile name (pushName)
+                    // pushName is the WhatsApp profile display name and is NOT what the customer tells us
+                    let name = od.customerName || `WA: ${senderPhone}`;
                     if (od.customerAddress?.toLowerCase().includes("recoger")) name = `Recoger - ${name.replace(/^Recoger - /, '')}`;
                     const finalName = String(name || "Cliente WhatsApp").substring(0, 191);
                     const finalAddress = String(od.customerAddress || "").substring(0, 191) || null;
@@ -1207,9 +1315,19 @@ FORMATO DE SALIDA (ESTRICTO JSON):
 
             // Whether DB succeeded or failed, the customer always gets their confirmation.
             if (!orderCreatedSuccessfully) {
-              console.error(`[WhatsApp Bot] Order failed but sending confirmation to client anyway to protect UX. Contact: ${senderPhone}`);
+              console.error(`[WhatsApp Bot] ⚠️ CRITICAL ERROR: Order failed to save in DB for ${senderPhone}. Sending WhatsApp alert to admin...`);
+              try {
+                const alertPhone = process.env.ADMIN_ALERT_PHONE || "573223119008";
+                await sendWhatsAppMessage(
+                  normalizarNumero(alertPhone) + "@s.whatsapp.net",
+                  `[⚠️ ALERTA PEDIDO NO GUARDADO EN DB]\nUn cliente recibio confirmacion pero LA BASE DE DATOS FALLO al guardar la orden.\n\nCliente: ${senderPhone}\nNombre: ${od?.customerName || 'Desconocido'}\nDireccion: ${od?.customerAddress || 'No especificada'}\nNotas: ${od?.notes || ''}`
+                );
+              } catch (alertErr: any) {
+                console.error("[WhatsApp Bot] Could not send admin alert message:", alertErr.message);
+              }
             }
-          }
+            }
+            } // end if intent is still "order" after safeguard
 
           // === PLACEHOLDER REPLACEMENT FOR NON-ORDER RESPONSES (e.g. quoting prices in chat) ===
           if (geminiResponse.replyText && /\{\{(SUBTOTAL|DOMICILIO|TOTAL)\}\}/.test(geminiResponse.replyText)) {
