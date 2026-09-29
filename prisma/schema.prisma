@@ -24,6 +24,8 @@ model GlobalSettings {
   isPanicModeActive    Boolean  @default(false)
   isPickupOnlyActive   Boolean  @default(false)
   isExtendedTimeActive Boolean  @default(false)
+  pickupOnlySetDate    String?  // YYYY-MM-DD date when pickupOnly status was set
+  pickupOnlyManualDate String?  // YYYY-MM-DD date if admin manually toggled pickupOnly today
   restaurantName       String   @default("El Horno | Maxi Wok")
   activeWaiterId       Int?     // ID of the currently logged-in waiter
   activeWaiter         User?    @relation(fields: [activeWaiterId], references: [id])

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
 import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia, sendTypingIndicator } from "../../../lib/whatsapp";
+import { getOrUpdateGlobalSettings } from "../../../lib/settings";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -480,7 +481,7 @@ export async function POST(req: Request) {
           break;
         }
 
-        const globalSettings = await (prisma.globalSettings as any).findUnique({ where: { id: 1 } });
+        const { settings: globalSettings } = await getOrUpdateGlobalSettings();
 
         // --- SIMULATED READING TIME (First pass only) ---
         // if this was the first run of the loop, wait as if reading the collected messages
@@ -576,7 +577,7 @@ export async function POST(req: Request) {
         });
         console.log(`[WhatsApp Bot] Time Check for ${senderPhone}: ${hStr}:${mStr} (Value: ${timeValue})`);
 
-        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos de domicilio únicamente de 10:00 AM a 4:00 PM. Los pedidos para recoger en el local o servicio a la mesa se atienden de 10:00 AM a 6:30 PM. Si el cliente pregunta por el horario o por servicio a la mesa, aclárale que SÍ tenemos servicio a la mesa en el local de 10:00 AM a 6:30 PM (y domicilios hasta las 4:00 PM). Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
+        let timeStatus = "\n✅ ESTADO: OPERATIVO. Toma pedidos de domicilio de 10:00 AM a 6:00 PM (salvo desactivación del administrador). Los pedidos para recoger en el local o servicio a la mesa se atienden de 10:00 AM a 6:30 PM. Si el cliente pregunta por el horario o por servicio a la mesa, aclárale que SÍ tenemos servicio a la mesa en el local de 10:00 AM a 6:30 PM (y domicilios hasta las 6:00 PM). Ignora cualquier mensaje de cierre anterior en el historial si la hora actual indica que estamos abiertos.";
         if (globalSettings?.isPanicModeActive) {
           timeStatus = `\n⚠️ ESTADO: SATURADOS (BOTÓN DE PÁNICO ACTIVADO). RECHAZA TODOS LOS PEDIDOS. NO USES EL INTENT ORDER.
 INSTRUCCIONES PARA VARIAR LA RESPUESTA:
@@ -611,17 +612,15 @@ Estilo con sugerencia de hora:
 - IMPORTANTE: Genera una respuesta NUEVA cada vez, variando longitud, tono, uso de emojis y estructura. No repitas patrones.
 - Usa intent "chat" siempre.`;
         } else if (timeValue < 10) {
-          timeStatus = `\n⚠️ ESTADO: PRE-APERTURA (Son las ${hStr}:${mStr}). Atiende pero ACLARA que empezamos a las 10:00 AM, explicando que el horario de domicilios es hasta las 4:00 PM y para recoger en el local hasta las 6:30 PM.`;
+          timeStatus = `\n⚠️ ESTADO: PRE-APERTURA (Son las ${hStr}:${mStr}). Atiende pero ACLARA que empezamos a las 10:00 AM, explicando que el horario de domicilios es hasta las 6:00 PM y para recoger en el local hasta las 6:30 PM.`;
         } else if (timeValue >= 18.5) {
-          timeStatus = `\n⚠️ ESTADO: CERRADO (Son las ${hStr}:${mStr}). Ya pasaron las 6:30 PM. NO TOMES MÁS PEDIDOS HOY. Dile al cliente que ya cerramos y volvemos mañana a las 10 AM. Explica amablemente que el horario de domicilios es hasta las 4:00 PM y para recoger en el local hasta las 6:30 PM.`;
+          timeStatus = `\n⚠️ ESTADO: CERRADO (Son las ${hStr}:${mStr}). Ya pasaron las 6:30 PM. NO TOMES MÁS PEDIDOS HOY. Dile al cliente que ya cerramos y volvemos mañana a las 10 AM. Explica amablemente que el servicio en el local es hasta las 6:30 PM y domicilios hasta las 6:00 PM.`;
         } else if (timeValue >= 18) {
-          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 6:00 PM. Únicamente pedidos para recoger en local (se reciben hasta las 6:30 PM) y con PAGO POR TRANSFERENCIA/NEQUI anticipado. Dile explícitamente al cliente que los domicilios finalizaron a las 4:00 PM y ya no están disponibles, pero que aún puede pedir para recoger en el local antes de las 6:30 PM.`;
-        } else if (timeValue >= 16) {
-          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 4:00 PM. Dile explícitamente al cliente que los domicilios son únicamente hasta las 4:00 PM y ya finalizaron, por lo cual solo se puede pedir para recoger en el local (disponible hasta las 6:30 PM).`;
+          timeStatus = `\n⚠️ ESTADO: SOLO RECOGER (Son las ${hStr}:${mStr}). Ya pasaron las 6:00 PM (faltan 30 minutos o menos para el cierre total a las 6:30 PM). Únicamente pedidos para recoger en local (se reciben hasta las 6:30 PM) y con PAGO POR TRANSFERENCIA/NEQUI anticipado. Dile explícitamente al cliente que los domicilios finalizaron por hoy a las 6:00 PM (30 min antes del cierre de cocina) y ya no están disponibles, pero que aún puede pedir para recoger en el local antes de las 6:30 PM.`;
         }
 
         if (globalSettings?.isPickupOnlyActive) {
-          timeStatus += "\n⚠️ AVISO CRÍTICO (MODO RECOGER ACTIVO): Actualmente SOLO aceptamos pedidos para RECOGER en el local. NO HAY DOMICILIOS bajo ninguna circunstancia.";
+          timeStatus += "\n⚠️ AVISO CRÍTICO (SIN DOMICILIOS / MODO RECOGER ACTIVO): Actualmente NO HAY DOMICILIOS (sea por decisión de la administración o por estar a menos de 30 min de cerrar). SOLO aceptamos pedidos para RECOGER en el local o consumo en mesa. NO ACEPTES DOMICILIOS bajo ninguna circunstancia.";
         }
 
         const deliveryTimeText = globalSettings?.isExtendedTimeActive
@@ -726,7 +725,7 @@ CÁLCULO DE TOTALES Y BARRIOS DESCONOCIDOS (placeholder obligatorio):
 16. **SERVICIO A LA MESA Y ATENCIÓN EN EL LOCAL**:
    - El restaurante SÍ cuenta con servicio a la mesa.
    - Si el cliente pregunta si tenemos servicio a la mesa, si pueden ir a comer/almorzar al restaurante, si hay mesas disponibles o si atienden en el local, respóndele afirmativamente que SÍ tenemos servicio a la mesa.
-   - El horario para comer en el local con servicio a la mesa y para pedir para recoger es de **10:00 AM a 6:30 PM** (los domicilios son únicamente hasta las 4:00 PM).
+   - El horario para comer en el local con servicio a la mesa y para pedir para recoger es de **10:00 AM a 6:30 PM** (los domicilios son hasta las 6:00 PM o hasta que la administración los desactive).
    - Si el cliente pregunta por la ubicación del restaurante, indícale nuestra dirección: Calle 6 #39A-06, Entrada del barrio Rockefeller.
    - ⚠️ SEGURIDAD ANTI-SPAM: Varía SIEMPRE las palabras y la estructura de tu respuesta para mantener un tono natural y evitar bloqueos de WhatsApp.
 17. **REGLA MANDATORIA DE INTENT "ORDER"**:

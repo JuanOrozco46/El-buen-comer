@@ -37,6 +37,8 @@ export default function SettingsPage() {
   const [isPanicActive, setIsPanicActive] = useState(false);
   const [isPickupOnlyActive, setIsPickupOnlyActive] = useState(false);
   const [isExtendedTimeActive, setIsExtendedTimeActive] = useState(false);
+  const [isAutoTriggered, setIsAutoTriggered] = useState(false);
+  const [isManuallySetToday, setIsManuallySetToday] = useState(false);
 
   // New User Form State
   const [newUser, setNewUser] = useState({ userName: "", name: "", role: "WAITER", password: "" });
@@ -68,6 +70,8 @@ export default function SettingsPage() {
         setIsPanicActive(json.isPanicModeActive);
         setIsPickupOnlyActive(json.isPickupOnlyActive);
         setIsExtendedTimeActive(json.isExtendedTimeActive || false);
+        setIsAutoTriggered(json.isAutoTriggered || false);
+        setIsManuallySetToday(json.isManuallySetToday || false);
       } catch (err) {
         console.error(err);
       } finally {
@@ -196,6 +200,8 @@ export default function SettingsPage() {
       });
       const json = await res.json();
       setIsPickupOnlyActive(json.isPickupOnlyActive);
+      setIsAutoTriggered(json.isAutoTriggered || false);
+      setIsManuallySetToday(json.isManuallySetToday || false);
     } catch (err) {
       console.error(err);
     }
@@ -574,8 +580,10 @@ export default function SettingsPage() {
 
                 <div className="flex justify-between items-center mt-8 pt-8 border-t border-zinc-200">
                    <div>
-                      <p className="font-black text-zinc-900 uppercase tracking-widest text-sm">Modo Solo Recoger</p>
-                      <p className="text-xs text-zinc-500 font-medium max-w-sm mt-1">Al activarse, el bot informará que solo hay pedidos para recoger (no domicilios).</p>
+                      <p className="font-black text-zinc-900 uppercase tracking-widest text-sm">Cierre de Domicilios ("No más domicilios")</p>
+                      <p className="text-xs text-zinc-500 font-medium max-w-md mt-1">
+                        Desactiva inmediatamente la recepción de domicilios por WhatsApp y POS. Se activa automáticamente faltando 30 min para cerrar (6:00 PM) y se restablece solo al iniciar el siguiente día de servicio.
+                      </p>
                    </div>
                    <div 
                     onClick={togglePickupOnly}
@@ -591,8 +599,16 @@ export default function SettingsPage() {
                       <AlertTriangle size={20} />
                     </div>
                     <div>
-                      <p className="text-sm font-black text-orange-600 uppercase tracking-widest leading-none">Solo Recoger Activo</p>
-                      <p className="text-[10px] text-orange-500 font-bold mt-1 uppercase">El bot advierte a los clientes sobre la disponibilidad limitada.</p>
+                      <p className="text-sm font-black text-orange-600 uppercase tracking-widest leading-none">
+                        Domicilios Suspendidos (Solo Recoger)
+                      </p>
+                      <p className="text-[10px] text-orange-600 font-bold mt-1 uppercase">
+                        {isAutoTriggered 
+                          ? "Activado automáticamente por horario (quedan 30 min o menos para el cierre de cocina a las 6:30 PM)." 
+                          : isManuallySetToday 
+                          ? "Activado manualmente por la administración para el servicio de hoy." 
+                          : "Los clientes de WhatsApp y POS solo podrán realizar pedidos para recoger en local o consumo en mesa."}
+                      </p>
                     </div>
                   </div>
                 )}

@@ -8,7 +8,7 @@ import { ProductCard } from "../../components/pos/ProductCard";
 import { OrderSummary } from "../../components/pos/OrderSummary";
 import { TableMap } from "../../components/pos/TableMap";
 import { DeliveryModal } from "../../components/pos/DeliveryModal";
-import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, ChevronLeft, CheckCircle2, ShoppingBag } from "lucide-react";
+import { Search, Loader2, ListOrdered, PlusCircle, ShoppingCart, X, DollarSign, Smartphone, Banknote, Printer, ChefHat, ChevronLeft, CheckCircle2, ShoppingBag, Bike } from "lucide-react";
 import { TakeawayModal } from "../../components/pos/TakeawayModal";
 
 function POSPageContent() {
@@ -37,6 +37,7 @@ function POSPageContent() {
   }, [searchParams]);
   const [viewStep, setViewStep] = useState<'TABLE' | 'PRODUCTS'>('TABLE');
   const [isPanicActive, setIsPanicActive] = useState(false);
+  const [isPickupOnlyActive, setIsPickupOnlyActive] = useState(false);
   const [activeWaiter, setActiveWaiter] = useState<{ id: number | null; name: string | null }>({ id: null, name: null });
   const [editOrderId, setEditOrderId] = useState<number | null>(null);
 
@@ -70,6 +71,7 @@ function POSPageContent() {
         const res = await fetch('/api/admin/panic');
         const json = await res.json();
         setIsPanicActive(json.isPanicModeActive);
+        setIsPickupOnlyActive(json.isPickupOnlyActive || false);
       } catch (err) { console.error(err); }
     };
 
@@ -551,6 +553,16 @@ function POSPageContent() {
             </div>
           )}
         </header>
+
+        {/* Pickup Only Banner */}
+        {isPickupOnlyActive && (
+          <div className="bg-orange-500 text-white px-4 md:px-10 py-2.5 flex items-center gap-3 shrink-0 animate-in fade-in slide-in-from-top-1">
+            <Bike size={16} className="shrink-0 animate-pulse" />
+            <p className="text-[10px] font-black uppercase tracking-widest">
+              Domicilios suspendidos — Solo recoger en local y servicio a la mesa
+            </p>
+          </div>
+        )}
 
         {/* Dynamic Content Area */}
         {viewMode === 'NEW' ? (
