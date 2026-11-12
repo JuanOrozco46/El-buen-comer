@@ -251,7 +251,8 @@ export default function SettingsPage() {
       if (res.ok) {
         setUsers(users.filter(u => u.id !== id));
       } else {
-        alert("No se pudo eliminar el usuario");
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "No se pudo eliminar el usuario");
       }
     } catch(err) { console.error(err); }
   };

@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+
+export const maxDuration = 300;
 import prisma from "../../../lib/prisma";
 import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia, sendTypingIndicator } from "../../../lib/whatsapp";
 import { getOrUpdateGlobalSettings } from "../../../lib/settings";
@@ -119,6 +121,35 @@ const userPanicReplies: Record<string, { count: number, lastTime: number }> = {}
 const userMessageTimestamps: Record<string, number[]> = {};
 const NORMAL_MAX_MESSAGES_PER_WINDOW = 8; // Max messages per user in window
 const NORMAL_RATE_WINDOW = 2 * 60 * 1000; // 2-minute sliding window
+
+// In-memory idempotency cache using key.id to prevent duplicate webhook processing on Evolution API retries
+const processedMessageIds = new Map<string, number>();
+const MESSAGE_ID_TTL_MS = 10 * 60 * 1000; // 10 minutes TTL
+const MAX_PROCESSED_IDS = 2000;
+
+function isDuplicateMessageId(messageId: string | undefined | null): boolean {
+  if (!messageId) return false;
+  const now = Date.now();
+
+  // Clean up expired entries to prevent memory growth
+  for (const [id, timestamp] of processedMessageIds.entries()) {
+    if (now - timestamp > MESSAGE_ID_TTL_MS) {
+      processedMessageIds.delete(id);
+    }
+  }
+
+  if (processedMessageIds.has(messageId)) {
+    return true;
+  }
+
+  if (processedMessageIds.size >= MAX_PROCESSED_IDS) {
+    const oldestKey = processedMessageIds.keys().next().value;
+    if (oldestKey) processedMessageIds.delete(oldestKey);
+  }
+
+  processedMessageIds.set(messageId, now);
+  return false;
+}
 
 /**
  * Generates a randomized panic mode rejection without calling Gemini.
@@ -279,148 +310,164 @@ export async function GET(req: Request) {
  * POST /api/whatsapp
  */
 export async function POST(req: Request) {
-  let senderPhone = "Desconocido";
-  let remoteJid = "";
-  let pushName = "";
-
+  let body: any;
   try {
-    const body = await req.json();
-    const data = body.data;
-    if (!data || !data.message) return NextResponse.json({ received: true });
+    body = await req.json();
+  } catch (parseErr: any) {
+    console.error("[WhatsApp Webhook] Invalid JSON payload:", parseErr.message);
+    return NextResponse.json({ status: "ok" }, { status: 200 });
+  }
 
-    remoteJid = data.key.remoteJid;
+  const data = body?.data;
+  if (!data || !data.message) {
+    return NextResponse.json({ status: "ok" }, { status: 200 });
+  }
 
-    // === ANTI-SPAM: Ignore group messages entirely ===
-    if (remoteJid?.endsWith("@g.us")) {
-      return NextResponse.json({ received: true });
-    }
+  const remoteJid: string = data.key?.remoteJid || "";
 
-    const rawPhone = remoteJid?.replace(/@s.whatsapp.net|@g.us/, "");
-    senderPhone = normalizarNumero(rawPhone);
-    pushName = data.pushName || "";
+  // === ANTI-SPAM: Ignore group messages entirely ===
+  if (remoteJid.endsWith("@g.us")) {
+    return NextResponse.json({ status: "ok" }, { status: 200 });
+  }
 
-    const getMessage = (m: any): any => {
-      if (!m) return null;
-      if (m.ephemeralMessage) return getMessage(m.ephemeralMessage.message);
-      if (m.viewOnceMessageV2) return getMessage(m.viewOnceMessageV2.message);
-      if (m.documentWithCaptionMessage) return getMessage(m.documentWithCaptionMessage.message);
-      return m;
-    };
+  const getMessage = (m: any): any => {
+    if (!m) return null;
+    if (m.ephemeralMessage) return getMessage(m.ephemeralMessage.message);
+    if (m.viewOnceMessageV2) return getMessage(m.viewOnceMessageV2.message);
+    if (m.documentWithCaptionMessage) return getMessage(m.documentWithCaptionMessage.message);
+    return m;
+  };
 
-    const isFromMe = data.key.fromMe;
-    const messageObj = getMessage(data.message);
-    if (!messageObj || data.message.reactionMessage) return NextResponse.json({ received: true });
+  const messageObj = getMessage(data.message);
+  if (!messageObj || data.message.reactionMessage) {
+    return NextResponse.json({ status: "ok" }, { status: 200 });
+  }
 
-    let messageText = "";
-    let mediaItem: any = null;
+  // === IDEMPOTENCY CHECK (In-Memory by key.id) ===
+  const incomingMessageId: string | undefined = data.key?.id;
+  if (isDuplicateMessageId(incomingMessageId)) {
+    console.log(`[WhatsApp Webhook] Ignored duplicate webhook event (key.id: ${incomingMessageId})`);
+    return NextResponse.json({ status: "ok" }, { status: 200 });
+  }
 
-    if (messageObj.conversation) messageText = messageObj.conversation;
-    else if (messageObj.extendedTextMessage) messageText = messageObj.extendedTextMessage.text;
-    else if (messageObj.imageMessage) {
-      messageText = messageObj.imageMessage.caption || "";
-      mediaItem = { type: 'image', mime: messageObj.imageMessage.mimetype, base64: null };
-    } else if (messageObj.audioMessage) {
-      mediaItem = { type: 'audio', mime: messageObj.audioMessage.mimetype, base64: null };
-    } else if (messageObj.documentMessage) {
-      messageText = messageObj.documentMessage.caption || "";
-      if (messageObj.documentMessage.mimetype?.startsWith('image')) mediaItem = { type: 'image', mime: messageObj.documentMessage.mimetype, base64: null };
-    }
+  const rawPhone = remoteJid.replace(/@s.whatsapp.net|@g.us/, "");
+  const senderPhone = normalizarNumero(rawPhone) || "Desconocido";
+  const pushName = data.pushName || "";
+  const isFromMe = data.key?.fromMe;
 
-    // --- FETCH BASE64 FOR MEDIA IF PRESENT ---
-    if (mediaItem) {
-      const apiUrl = process.env.EVOLUTION_API_URL;
-      const apiKey = process.env.EVOLUTION_API_KEY;
-      const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "Elbuencomer";
+  // Schedule heavy execution in the background so Evolution API receives an immediate 200 OK
+  after(async () => {
+    try {
+      let messageText = "";
+      let mediaItem: any = null;
 
-      let rawBase64 = body.base64 || data.base64 || data.message?.base64; // Check if already present
+      if (messageObj.conversation) messageText = messageObj.conversation;
+      else if (messageObj.extendedTextMessage) messageText = messageObj.extendedTextMessage.text;
+      else if (messageObj.imageMessage) {
+        messageText = messageObj.imageMessage.caption || "";
+        mediaItem = { type: 'image', mime: messageObj.imageMessage.mimetype, base64: null };
+      } else if (messageObj.audioMessage) {
+        mediaItem = { type: 'audio', mime: messageObj.audioMessage.mimetype, base64: null };
+      } else if (messageObj.documentMessage) {
+        messageText = messageObj.documentMessage.caption || "";
+        if (messageObj.documentMessage.mimetype?.startsWith('image')) mediaItem = { type: 'image', mime: messageObj.documentMessage.mimetype, base64: null };
+      }
 
-      if (!rawBase64 && apiUrl && apiKey && instanceName && data.key?.id) {
-        const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            const response = await fetch(`${cleanUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "apikey": apiKey },
-              body: JSON.stringify({ message: { key: data.key, message: data.message } })
-            });
-            if (response.ok) {
-              const fetchedData = await response.json();
-              if (fetchedData && typeof fetchedData.base64 === "string") {
-                rawBase64 = fetchedData.base64.replace(/^data:[^;]+;base64,/, "");
-                console.log(`[WhatsApp Bot] Successfully fetched media base64 on attempt ${attempt} for ${senderPhone}`);
-                break;
+      // --- FETCH BASE64 FOR MEDIA IF PRESENT ---
+      if (mediaItem) {
+        const apiUrl = process.env.EVOLUTION_API_URL;
+        const apiKey = process.env.EVOLUTION_API_KEY;
+        const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "Elbuencomer";
+
+        let rawBase64 = body.base64 || data.base64 || data.message?.base64; // Check if already present
+
+        if (!rawBase64 && apiUrl && apiKey && instanceName && data.key?.id) {
+          const cleanUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const response = await fetch(`${cleanUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "apikey": apiKey },
+                body: JSON.stringify({ message: { key: data.key, message: data.message } })
+              });
+              if (response.ok) {
+                const fetchedData = await response.json();
+                if (fetchedData && typeof fetchedData.base64 === "string") {
+                  rawBase64 = fetchedData.base64.replace(/^data:[^;]+;base64,/, "");
+                  console.log(`[WhatsApp Bot] Successfully fetched media base64 on attempt ${attempt} for ${senderPhone}`);
+                  break;
+                }
               }
+            } catch (e: any) {
+              console.error(`[WhatsApp Bot] Attempt ${attempt}/3 fetching base64 for media failed (${senderPhone}):`, e.message);
             }
-          } catch (e: any) {
-            console.error(`[WhatsApp Bot] Attempt ${attempt}/3 fetching base64 for media failed (${senderPhone}):`, e.message);
-          }
-          if (attempt < 3) {
-            await new Promise(r => setTimeout(r, 1000 * attempt));
+            if (attempt < 3) {
+              await new Promise(r => setTimeout(r, 1000 * attempt));
+            }
           }
         }
+        mediaItem.base64 = rawBase64;
       }
-      mediaItem.base64 = rawBase64;
-    }
 
-    // --- HANDLE OUTGOING MESSAGES (fromMe) ---
-    if (isFromMe) {
-      if (!messageText) return NextResponse.json({ received: true });
-      console.log(`[WhatsApp Bot] Detected outgoing from current user to ${senderPhone}: "${messageText}"`);
+      // --- HANDLE OUTGOING MESSAGES (fromMe) ---
+      if (isFromMe) {
+        if (!messageText) return;
+        console.log(`[WhatsApp Bot] Detected outgoing from current user to ${senderPhone}: "${messageText}"`);
 
-      const chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
-      if (chat) {
-        let history = (chat.history as any[]) || [];
-        // Prevent doubling if the bot just sent this in the same cycle
-        const isDuplicate = history.length > 0 &&
-          (history[history.length - 1].text === messageText ||
-            history[history.length - 1].text?.includes(messageText.substring(0, 50)));
+        const chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
+        if (chat) {
+          let history = (chat.history as any[]) || [];
+          // Prevent doubling if the bot just sent this in the same cycle
+          const isDuplicate = history.length > 0 &&
+            (history[history.length - 1].text === messageText ||
+              history[history.length - 1].text?.includes(messageText.substring(0, 50)));
 
-        if (!isDuplicate) {
-          const updatedHistory = JSON.parse(JSON.stringify([...history, { role: "model", text: messageText }].slice(-50)));
-          await prisma.whatsAppChat.update({ where: { phone: senderPhone }, data: { history: updatedHistory, updatedAt: new Date() } });
-          console.log(`[WhatsApp Bot] Manual message synced to history for ${senderPhone}`);
+          if (!isDuplicate) {
+            const updatedHistory = JSON.parse(JSON.stringify([...history, { role: "model", text: messageText }].slice(-50)));
+            await prisma.whatsAppChat.update({ where: { phone: senderPhone }, data: { history: updatedHistory, updatedAt: new Date() } });
+            console.log(`[WhatsApp Bot] Manual message synced to history for ${senderPhone}`);
+          }
         }
+        return;
       }
-      return NextResponse.json({ received: true });
-    }
 
 
-    // 0. Buffer message (Anti-Duplication for Webhook retries)
-    const thirtySecondsAgo = new Date(Date.now() - 30000);
-    const existingBuffer = await (prisma as any).whatsAppMessageBuffer.findFirst({
-      where: {
-        phone: senderPhone,
-        content: messageText || null,
-        createdAt: { gte: thirtySecondsAgo }
-      }
-    });
-
-    if (!existingBuffer) {
-      await (prisma as any).whatsAppMessageBuffer.create({
-        data: {
+      // 0. Buffer message (Anti-Duplication for Webhook retries)
+      const thirtySecondsAgo = new Date(Date.now() - 30000);
+      const existingBuffer = await (prisma as any).whatsAppMessageBuffer.findFirst({
+        where: {
           phone: senderPhone,
           content: messageText || null,
-          mimeType: mediaItem?.mime || null,
-          base64: mediaItem?.base64 || null
+          createdAt: { gte: thirtySecondsAgo }
         }
       });
-    } else {
-      console.log(`[WhatsApp Bot] Ignorado mensaje repetido en el buffer para ${senderPhone} (Previniendo reintentos del webhook)`);
-    }
 
-    // 1. Lock check
-    let chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
-    if (!chat) chat = await prisma.whatsAppChat.create({ data: { phone: senderPhone, history: [] } });
-    const chatRealUpdatedAt = chat.updatedAt;
+      if (!existingBuffer) {
+        await (prisma as any).whatsAppMessageBuffer.create({
+          data: {
+            phone: senderPhone,
+            content: messageText || null,
+            mimeType: mediaItem?.mime || null,
+            base64: mediaItem?.base64 || null
+          }
+        });
+      } else {
+        console.log(`[WhatsApp Bot] Ignorado mensaje repetido en el buffer para ${senderPhone} (Previniendo reintentos del webhook)`);
+      }
 
-    const ONE_MINUTE_AGO = new Date(Date.now() - 60000);
-    if ((chat as any).isProcessing && chat.updatedAt > ONE_MINUTE_AGO) return NextResponse.json({ received: true });
+      // 1. Lock check
+      let chat = await prisma.whatsAppChat.findUnique({ where: { phone: senderPhone } });
+      if (!chat) chat = await prisma.whatsAppChat.create({ data: { phone: senderPhone, history: [] } });
+      const chatRealUpdatedAt = chat.updatedAt;
 
-    const lockAcquired = await (prisma as any).whatsAppChat.updateMany({
-      where: { phone: senderPhone, OR: [{ isProcessing: false }, { updatedAt: { lt: ONE_MINUTE_AGO } }] },
-      data: { isProcessing: true, updatedAt: new Date() }
-    });
-    if (lockAcquired.count === 0) return NextResponse.json({ received: true });
+      const ONE_MINUTE_AGO = new Date(Date.now() - 60000);
+      if ((chat as any).isProcessing && chat.updatedAt > ONE_MINUTE_AGO) return;
+
+      const lockAcquired = await (prisma as any).whatsAppChat.updateMany({
+        where: { phone: senderPhone, OR: [{ isProcessing: false }, { updatedAt: { lt: ONE_MINUTE_AGO } }] },
+        data: { isProcessing: true, updatedAt: new Date() }
+      });
+      if (lockAcquired.count === 0) return;
 
     try {
       // --- MESSAGE GROUPING: Wait before picking up buffer items ---
@@ -1489,19 +1536,25 @@ FORMATO DE SALIDA (ESTRICTO JSON):
         await (prisma as any).whatsAppMessageBuffer.deleteMany({ where: { id: { in: itemIds } } });
         await new Promise(r => setTimeout(r, 500));
       }
-    } finally {
-      await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { isProcessing: false } });
+      } finally {
+        try {
+          await (prisma as any).whatsAppChat.update({ where: { phone: senderPhone }, data: { isProcessing: false } });
+        } catch (unlockError: any) {
+          console.error(`[WhatsApp Bot] Error releasing isProcessing lock for ${senderPhone}:`, unlockError.message);
+        }
+      }
+    } catch (error: any) {
+      console.error(`[WhatsApp Webhook Background] General Error (${senderPhone}):`, error);
+      // Disabled at user request to avoid message fatigue
+      /*
+      const isT = error.message?.includes("503") || error.message?.includes("Service Unavailable") || error.message?.includes("high demand") || error.message?.includes("fetch failed");
+      if (!isT && Date.now() - lastAlertTimestamp > ALERT_COOLDOWN) {
+        lastAlertTimestamp = Date.now();
+        try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[⚠️ ALERT BOT]\nError: ${error.message}\nCliente: ${senderPhone}`); } catch (e) { }
+      }
+      */
     }
-  } catch (error: any) {
-    console.error("[WhatsApp Webhook] General Error:", error);
-    // Disabled at user request to avoid message fatigue
-    /*
-    const isT = error.message?.includes("503") || error.message?.includes("Service Unavailable") || error.message?.includes("high demand") || error.message?.includes("fetch failed");
-    if (!isT && Date.now() - lastAlertTimestamp > ALERT_COOLDOWN) {
-      lastAlertTimestamp = Date.now();
-      try { await sendWhatsAppMessage(`573223119008@s.whatsapp.net`, `[⚠️ ALERT BOT]\nError: ${error.message}\nCliente: ${senderPhone}`); } catch (e) { }
-    }
-    */
-  }
-  return NextResponse.json({ received: true });
+  });
+
+  return NextResponse.json({ status: "ok" }, { status: 200 });
 }
