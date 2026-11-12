@@ -51,7 +51,18 @@ export function AutoPrintListener() {
 
     fetchOrders();
     const interval = setInterval(fetchOrders, 3000); // Poll every 3s
-    return () => clearInterval(interval);
+
+    // WhatsApp Keep-Alive & Auto-Heal Watchdog (every 2 minutes)
+    const pingWhatsApp = () => {
+      fetch("/api/admin/whatsapp").catch(() => {});
+    };
+    pingWhatsApp();
+    const waInterval = setInterval(pingWhatsApp, 120000);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(waInterval);
+    };
   }, [status, session]);
 
   return null; // Invisible component

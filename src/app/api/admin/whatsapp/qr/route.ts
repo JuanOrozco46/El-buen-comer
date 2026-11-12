@@ -4,7 +4,7 @@ import { authOptions } from "../../../../../lib/auth";
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
-const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME || "Elbuencomer";
+const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME || "Arroceria";
 
 /**
  * GET /api/admin/whatsapp/qr

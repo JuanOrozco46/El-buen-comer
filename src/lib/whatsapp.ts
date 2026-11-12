@@ -31,7 +31,91 @@ export function normalizarNumero(num: string | undefined | null): string {
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
-const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME;
+const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME || "Arroceria";
+
+let lastReconnectAttempt = 0;
+const RECONNECT_COOLDOWN_MS = 45000; // 45s cooldown between auto-reconnect attempts
+
+/**
+ * Checks if the Evolution API WhatsApp instance is connected ("open").
+ * If it is closed or disconnected, automatically requests a restart/reconnect
+ * using the stored session credentials (without logging out or requiring a new QR).
+ */
+export async function ensureWhatsAppConnected(
+  forceReconnect: boolean = false
+): Promise<{ connected: boolean; state: string; reconnected?: boolean }> {
+  if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE_NAME) {
+    return { connected: false, state: "NOT_CONFIGURED" };
+  }
+
+  const baseUrl = EVOLUTION_API_URL.replace(/\/$/, "");
+  const headers = {
+    "Content-Type": "application/json",
+    apikey: EVOLUTION_API_KEY,
+  };
+
+  let currentState = "unknown";
+
+  try {
+    const stateRes = await fetch(
+      `${baseUrl}/instance/connectionState/${EVOLUTION_INSTANCE_NAME}`,
+      { headers: { apikey: EVOLUTION_API_KEY }, cache: "no-store" }
+    );
+    if (stateRes.ok) {
+      const data = await stateRes.json().catch(() => ({}));
+      currentState = data?.instance?.state || data?.state || "unknown";
+    }
+  } catch (err: any) {
+    console.error("[WhatsApp KeepAlive] Error checking connectionState:", err.message);
+  }
+
+  if (currentState === "open" && !forceReconnect) {
+    return { connected: true, state: "open", reconnected: false };
+  }
+
+  const now = Date.now();
+  if (now - lastReconnectAttempt < RECONNECT_COOLDOWN_MS) {
+    return { connected: currentState === "open", state: currentState, reconnected: false };
+  }
+  lastReconnectAttempt = now;
+
+  console.warn(
+    `[WhatsApp Auto-Reconnect] Instance "${EVOLUTION_INSTANCE_NAME}" state is "${currentState}". Attempting automatic reconnect...`
+  );
+
+  let reconnected = false;
+
+  // 1. Try restarting the instance socket (PUT / POST)
+  for (const method of ["PUT", "POST"]) {
+    try {
+      const restartRes = await fetch(
+        `${baseUrl}/instance/restart/${EVOLUTION_INSTANCE_NAME}`,
+        { method, headers }
+      );
+      if (restartRes.ok) {
+        reconnected = true;
+        break;
+      }
+    } catch {
+      // Ignore and try connect endpoint next
+    }
+  }
+
+  // 2. Also call /instance/connect to ensure Baileys socket wakes up
+  try {
+    const connectRes = await fetch(
+      `${baseUrl}/instance/connect/${EVOLUTION_INSTANCE_NAME}`,
+      { method: "GET", headers: { apikey: EVOLUTION_API_KEY }, cache: "no-store" }
+    );
+    if (connectRes.ok) {
+      reconnected = true;
+    }
+  } catch (err: any) {
+    console.error("[WhatsApp Auto-Reconnect] Connect call error:", err.message);
+  }
+
+  return { connected: false, state: currentState, reconnected };
+}
 
 /**
  * Sends a text message to a WhatsApp number via the Evolution API.
@@ -44,39 +128,52 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
     return false;
   }
 
-  try {
-    console.log(`[WhatsApp] Sending message to ${to}: "${message.substring(0, 50)}..."`);
-    const response = await fetch(
-      `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": EVOLUTION_API_KEY,
-        },
-        body: JSON.stringify({
-          number: to,
-          options: {
-            delay: Math.floor(Math.random() * 800) + 400, // 400-1200ms
-            presence: "composing",
+  const baseUrl = EVOLUTION_API_URL.replace(/\/$/, "");
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      console.log(`[WhatsApp] Sending message to ${to} (attempt ${attempt}): "${message.substring(0, 50)}..."`);
+      const response = await fetch(
+        `${baseUrl}/message/sendText/${EVOLUTION_INSTANCE_NAME}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": EVOLUTION_API_KEY,
           },
-          text: message,
-        }),
+          body: JSON.stringify({
+            number: to,
+            options: {
+              delay: Math.floor(Math.random() * 800) + 400, // 400-1200ms
+              presence: "composing",
+            },
+            text: message,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        console.log(`[WhatsApp] Message sent successfully to ${to}`);
+        return true;
       }
-    );
 
-    if (!response.ok) {
       const errorBody = await response.text();
-      console.error("[WhatsApp] API error:", response.status, errorBody);
-      return false;
-    }
+      console.error(`[WhatsApp] API error (attempt ${attempt}):`, response.status, errorBody);
 
-    console.log(`[WhatsApp] Message sent successfully to ${to}`);
-    return true;
-  } catch (error) {
-    console.error("[WhatsApp] Network error:", error);
-    return false;
+      if (attempt === 1) {
+        await ensureWhatsAppConnected(true);
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    } catch (error) {
+      console.error(`[WhatsApp] Network error (attempt ${attempt}):`, error);
+      if (attempt === 1) {
+        await ensureWhatsAppConnected(true);
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    }
   }
+
+  return false;
 }
 
 /**
@@ -184,40 +281,53 @@ export async function sendWhatsAppMedia(to: string, mediaUrl?: string, caption?:
     return false;
   }
 
-  try {
-    console.log(`[WhatsApp] Sending media to ${to}: ${finalUrl}`);
-    const response = await fetch(
-      `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": EVOLUTION_API_KEY,
-        },
-        body: JSON.stringify({
-          number: to,
-          mediatype: "image",
-          mimetype: "image/jpeg",
-          caption: caption || "",
-          media: finalUrl,
-          options: {
-            delay: 500,
-            presence: "composing",
-          }
-        }),
+  const baseUrl = EVOLUTION_API_URL.replace(/\/$/, "");
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      console.log(`[WhatsApp] Sending media to ${to} (attempt ${attempt}): ${finalUrl}`);
+      const response = await fetch(
+        `${baseUrl}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": EVOLUTION_API_KEY,
+          },
+          body: JSON.stringify({
+            number: to,
+            mediatype: "image",
+            mimetype: "image/jpeg",
+            caption: caption || "",
+            media: finalUrl,
+            options: {
+              delay: 500,
+              presence: "composing",
+            }
+          }),
+        }
+      );
+
+      if (response.ok) {
+        console.log(`[WhatsApp] Media sent successfully to ${to}`);
+        return true;
       }
-    );
 
-    if (!response.ok) {
       const errorBody = await response.text();
-      console.error("[WhatsApp] Media API error:", response.status, errorBody);
-      return false;
-    }
+      console.error(`[WhatsApp] Media API error (attempt ${attempt}):`, response.status, errorBody);
 
-    console.log(`[WhatsApp] Media sent successfully to ${to}`);
-    return true;
-  } catch (error) {
-    console.error("[WhatsApp] Media network error:", error);
-    return false;
+      if (attempt === 1) {
+        await ensureWhatsAppConnected(true);
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    } catch (error) {
+      console.error(`[WhatsApp] Media network error (attempt ${attempt}):`, error);
+      if (attempt === 1) {
+        await ensureWhatsAppConnected(true);
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    }
   }
+
+  return false;
 }

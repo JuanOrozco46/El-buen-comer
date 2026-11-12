@@ -2,12 +2,12 @@ import { NextResponse, after } from "next/server";
 
 export const maxDuration = 300;
 import prisma from "../../../lib/prisma";
-import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia, sendTypingIndicator } from "../../../lib/whatsapp";
+import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia, sendTypingIndicator, ensureWhatsAppConnected } from "../../../lib/whatsapp";
 import { getOrUpdateGlobalSettings } from "../../../lib/settings";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
 /**
  * Normalizes a string by removing accents and converting to lowercase.
@@ -318,6 +318,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ status: "ok" }, { status: 200 });
   }
 
+  const eventType = String(body?.event || "").toLowerCase();
+  if (eventType === "connection.update" || eventType === "connection_update") {
+    const connState = body?.data?.state;
+    const statusReason = body?.data?.statusReason;
+    // 401 = logged out explicitly from phone; any other close reason is a transient drop
+    if (connState === "close" && statusReason !== 401) {
+      console.warn(`[WhatsApp Webhook] Connection dropped (state=${connState}, reason=${statusReason}). Scheduling auto-reconnect...`);
+      after(async () => {
+        await new Promise((r) => setTimeout(r, 2500));
+        await ensureWhatsAppConnected(true);
+      });
+    }
+    return NextResponse.json({ status: "ok" }, { status: 200 });
+  }
+
   const data = body?.data;
   if (!data || !data.message) {
     return NextResponse.json({ status: "ok" }, { status: 200 });
@@ -377,7 +392,7 @@ export async function POST(req: Request) {
       if (mediaItem) {
         const apiUrl = process.env.EVOLUTION_API_URL;
         const apiKey = process.env.EVOLUTION_API_KEY;
-        const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "Elbuencomer";
+        const instanceName = process.env.EVOLUTION_INSTANCE_NAME || "Arroceria";
 
         let rawBase64 = body.base64 || data.base64 || data.message?.base64; // Check if already present
 
@@ -822,8 +837,8 @@ FORMATO DE SALIDA (ESTRICTO JSON):
           safeHistory.shift();
         }
 
-        // Tiered Model Fallback (Primary: 2.5 Flash -> Fallback 1: 3 Flash -> Fallback 2: 2.5 Pro)
-        const fallbackModels = ["gemini-2.5-flash", "gemini-3-flash", "gemini-2.5-pro"];
+        // Tiered Model Fallback (Primary: 3.6 Flash -> Fallback 1: 3.8 Flash -> Fallback 2: 4 Hydrogen)
+        const fallbackModels = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-4-hydrogen"];
         let geminiResponse: any = null;
 
         // === LOCAL RESPONSE: Panic, Audio & Mock bypass Gemini entirely ===
