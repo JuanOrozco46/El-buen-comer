@@ -45,6 +45,20 @@ export async function GET() {
             message: "Ya estás conectado a WhatsApp.",
           });
         }
+
+        // CRITICAL FIX for Evolution API v2.3.7:
+        // If the instance is already in "connecting" state (e.g., auto-started on container boot
+        // or from a previous QR click), calling /instance/connect again WITHOUT first closing
+        // the existing "connecting" socket spawns a 2nd Baileys socket in memory. Once the QR
+        // is scanned, both sockets connect and fight each other with "conflict: replaced".
+        if (currentState === "connecting") {
+          console.log("[WhatsApp QR] Closing existing 'connecting' socket before generating fresh QR...");
+          await fetch(`${baseUrl}/instance/logout/${EVOLUTION_INSTANCE_NAME}`, {
+            method: "DELETE",
+            headers,
+          }).catch(() => {});
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       }
     } catch {
       // Proceed to QR endpoints if state check fails
