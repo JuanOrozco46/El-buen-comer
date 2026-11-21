@@ -27,6 +27,29 @@ export async function GET() {
     const baseUrl = EVOLUTION_API_URL.replace(/\/$/, "");
     const headers = { apikey: EVOLUTION_API_KEY };
 
+    // SAFETY CHECK: Never call /instance/connect if the instance is already "open".
+    // In Evolution API v2.3.7, calling /instance/connect on an already open instance
+    // spawns a duplicate Baileys socket in memory and causes a "conflict: replaced" loop.
+    try {
+      const stateRes = await fetch(
+        `${baseUrl}/instance/connectionState/${EVOLUTION_INSTANCE_NAME}`,
+        { headers, cache: "no-store" }
+      );
+      if (stateRes.ok) {
+        const stateData = await stateRes.json().catch(() => ({}));
+        const currentState = stateData?.instance?.state || stateData?.state;
+        if (currentState === "open") {
+          return NextResponse.json({
+            qr: null,
+            connected: true,
+            message: "Ya estás conectado a WhatsApp.",
+          });
+        }
+      }
+    } catch {
+      // Proceed to QR endpoints if state check fails
+    }
+
     const endpoints = [
       `${baseUrl}/instance/connect/${EVOLUTION_INSTANCE_NAME}`,
       `${baseUrl}/v2/instance/connect/${EVOLUTION_INSTANCE_NAME}`,
