@@ -159,7 +159,7 @@ export async function POST(req: Request) {
               enabled: true,
               url: webhookUrl,
               webhookByEvents: false,
-              events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+              events: ["MESSAGES_UPSERT"],
             },
           }),
         });
