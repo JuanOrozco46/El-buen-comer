@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../../../lib/auth";
-import { ensureWhatsAppConnected } from "../../../../lib/whatsapp";
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
@@ -9,7 +8,7 @@ const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME || "Arroceri
 
 /**
  * GET /api/admin/whatsapp
- * Check instance connection status and auto-heal if disconnected.
+ * Read instance connection status without changing Evolution's socket.
  */
 export async function GET() {
   try {
@@ -43,27 +42,7 @@ export async function GET() {
         if (res.ok) {
           const data = await res.json();
           // Normalize response
-          let state = data?.instance?.state || data?.state || data?.[0]?.instance?.state || "unknown";
-
-          // If disconnected, trigger automatic background reconnect
-          if (state !== "open") {
-            const heal = await ensureWhatsAppConnected(true);
-            if (heal.reconnected) {
-              await new Promise((r) => setTimeout(r, 1500));
-              try {
-                const retryRes = await fetch(endpoints[0], {
-                  headers: { apikey: EVOLUTION_API_KEY },
-                  cache: "no-store",
-                });
-                if (retryRes.ok) {
-                  const retryData = await retryRes.json().catch(() => ({}));
-                  state = retryData?.instance?.state || retryData?.state || state;
-                }
-              } catch {
-                // Keep previous state
-              }
-            }
-          }
+          const state = data?.instance?.state || data?.state || data?.[0]?.instance?.state || "unknown";
 
           return NextResponse.json({
             configured: true,
@@ -76,9 +55,6 @@ export async function GET() {
         continue;
       }
     }
-
-    // If endpoints failed or returned non-200, attempt auto-reconnect
-    await ensureWhatsAppConnected(true);
 
     return NextResponse.json({
       configured: true,

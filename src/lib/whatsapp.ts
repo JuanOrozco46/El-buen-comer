@@ -33,89 +33,8 @@ const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
 const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME || "Arroceria";
 
-let lastReconnectAttempt = 0;
-const RECONNECT_COOLDOWN_MS = 45000; // 45s cooldown between auto-reconnect attempts
-
-/**
- * Checks if the Evolution API WhatsApp instance is connected ("open").
- * If it is closed or disconnected, automatically requests a restart/reconnect
- * using the stored session credentials (without logging out or requiring a new QR).
- */
-export async function ensureWhatsAppConnected(
-  forceReconnect: boolean = false
-): Promise<{ connected: boolean; state: string; reconnected?: boolean }> {
-  if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE_NAME) {
-    return { connected: false, state: "NOT_CONFIGURED" };
-  }
-
-  const baseUrl = EVOLUTION_API_URL.replace(/\/$/, "");
-  const headers = {
-    "Content-Type": "application/json",
-    apikey: EVOLUTION_API_KEY,
-  };
-
-  let currentState = "unknown";
-
-  try {
-    const stateRes = await fetch(
-      `${baseUrl}/instance/connectionState/${EVOLUTION_INSTANCE_NAME}`,
-      { headers: { apikey: EVOLUTION_API_KEY }, cache: "no-store" }
-    );
-    if (stateRes.ok) {
-      const data = await stateRes.json().catch(() => ({}));
-      currentState = data?.instance?.state || data?.state || "unknown";
-    }
-  } catch (err: any) {
-    console.error("[WhatsApp KeepAlive] Error checking connectionState:", err.message);
-  }
-
-  if (currentState === "open" && !forceReconnect) {
-    return { connected: true, state: "open", reconnected: false };
-  }
-
-  const now = Date.now();
-  if (now - lastReconnectAttempt < RECONNECT_COOLDOWN_MS) {
-    return { connected: currentState === "open", state: currentState, reconnected: false };
-  }
-  lastReconnectAttempt = now;
-
-  console.warn(
-    `[WhatsApp Auto-Reconnect] Instance "${EVOLUTION_INSTANCE_NAME}" state is "${currentState}". Attempting automatic reconnect...`
-  );
-
-  let reconnected = false;
-
-  // 1. Try restarting the instance socket (PUT / POST)
-  for (const method of ["PUT", "POST"]) {
-    try {
-      const restartRes = await fetch(
-        `${baseUrl}/instance/restart/${EVOLUTION_INSTANCE_NAME}`,
-        { method, headers }
-      );
-      if (restartRes.ok) {
-        reconnected = true;
-        break;
-      }
-    } catch {
-      // Ignore and try connect endpoint next
-    }
-  }
-
-  // 2. Also call /instance/connect to ensure Baileys socket wakes up
-  try {
-    const connectRes = await fetch(
-      `${baseUrl}/instance/connect/${EVOLUTION_INSTANCE_NAME}`,
-      { method: "GET", headers: { apikey: EVOLUTION_API_KEY }, cache: "no-store" }
-    );
-    if (connectRes.ok) {
-      reconnected = true;
-    }
-  } catch (err: any) {
-    console.error("[WhatsApp Auto-Reconnect] Connect call error:", err.message);
-  }
-
-  return { connected: false, state: currentState, reconnected };
-}
+// Evolution owns the WhatsApp socket and its reconnection lifecycle. Requests
+// running in separate Vercel workers must not restart or reconnect that socket.
 
 /**
  * Sends a text message to a WhatsApp number via the Evolution API.
@@ -161,13 +80,11 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
       console.error(`[WhatsApp] API error (attempt ${attempt}):`, response.status, errorBody);
 
       if (attempt === 1) {
-        await ensureWhatsAppConnected(true);
         await new Promise((r) => setTimeout(r, 2500));
       }
     } catch (error) {
       console.error(`[WhatsApp] Network error (attempt ${attempt}):`, error);
       if (attempt === 1) {
-        await ensureWhatsAppConnected(true);
         await new Promise((r) => setTimeout(r, 2500));
       }
     }
@@ -317,13 +234,11 @@ export async function sendWhatsAppMedia(to: string, mediaUrl?: string, caption?:
       console.error(`[WhatsApp] Media API error (attempt ${attempt}):`, response.status, errorBody);
 
       if (attempt === 1) {
-        await ensureWhatsAppConnected(true);
         await new Promise((r) => setTimeout(r, 2500));
       }
     } catch (error) {
       console.error(`[WhatsApp] Media network error (attempt ${attempt}):`, error);
       if (attempt === 1) {
-        await ensureWhatsAppConnected(true);
         await new Promise((r) => setTimeout(r, 2500));
       }
     }

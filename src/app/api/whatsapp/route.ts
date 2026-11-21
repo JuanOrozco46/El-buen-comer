@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 
 export const maxDuration = 300;
 import prisma from "../../../lib/prisma";
-import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia, sendTypingIndicator, ensureWhatsAppConnected } from "../../../lib/whatsapp";
+import { sendWhatsAppMessage, normalizarNumero, sendWhatsAppMedia, sendTypingIndicator } from "../../../lib/whatsapp";
 import { getOrUpdateGlobalSettings } from "../../../lib/settings";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -320,16 +320,8 @@ export async function POST(req: Request) {
 
   const eventType = String(body?.event || "").toLowerCase();
   if (eventType === "connection.update" || eventType === "connection_update") {
-    const connState = body?.data?.state;
-    const statusReason = body?.data?.statusReason;
-    // 401 = logged out explicitly from phone; any other close reason is a transient drop
-    if (connState === "close" && statusReason !== 401) {
-      console.warn(`[WhatsApp Webhook] Connection dropped (state=${connState}, reason=${statusReason}). Scheduling auto-reconnect...`);
-      after(async () => {
-        await new Promise((r) => setTimeout(r, 2500));
-        await ensureWhatsAppConnected(true);
-      });
-    }
+    // Acknowledge only: Evolution manages reconnections. Restarting from this
+    // webhook can replace an active socket and create a reconnect feedback loop.
     return NextResponse.json({ status: "ok" }, { status: 200 });
   }
 
@@ -338,7 +330,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ status: "ok" }, { status: 200 });
   }
 
-  const remoteJid: string = data.key?.remoteJid || "";
+  const rawRemoteJid: string = data.key?.remoteJid || "";
+  const altRemoteJid: string = data.key?.remoteJidAlt || data.key?.senderPn || "";
+  const remoteJid: string = (rawRemoteJid.endsWith("@lid") && altRemoteJid) ? altRemoteJid : rawRemoteJid;
 
   // === ANTI-SPAM: Ignore group messages entirely ===
   if (remoteJid.endsWith("@g.us")) {
